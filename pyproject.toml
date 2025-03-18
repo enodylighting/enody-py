@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "enody"
+packages = [{ include = "enody" }]
+version = "0.1.0"
+description = "Enody Lighting SDK"
+license = "MIT"
+authors = ["Enody Lighting <source@enody.lighting>"]
+maintainers = ["Enody Lighting <source@enody.lighting>"]
+repository = "https://github.com/enodylighting/enody_py"
+include = ["data/*.json"]
+
+[tool.poetry.dependencies]
+python = ">=3.7"
+colour-science = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=6.0"
+
+[tool.poetry.build]
+generate-setup-file = false
+
+[build-system]
+requires = ["poetry_core"]
+build-backend = "poetry.core.masonry.api"

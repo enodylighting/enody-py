@@ -1,0 +1,5 @@
+.DS_Store
+.venv/
+dist/
+enody/__pycache__
+poetry.lock
