@@ -12,4 +12,5 @@ from .interface import (
     Source
 )
 
+from . import data
 from . import optimize

@@ -12,6 +12,7 @@ include = ["data/*.json"]
 [tool.poetry.dependencies]
 python = ">=3.7"
 colour-science = "*"
+tinygrad = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=6.0"

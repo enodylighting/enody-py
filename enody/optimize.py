@@ -40,8 +40,3 @@ def ssi(test_distributions, refernce_distributions):
     # Calculate per spectra SSI
     SSI = 100 - 32 * vector_magnitude
     return SSI
-
-# Load XYZ color matching functions
-# cmfs = colour.MSDS_CMFS['CIE 1931 2 Degree Standard Observer']
-# cmfs = cmfs.interpolate(SPECTRAL_SHAPE)
-# xyz_cmf = Tensor(cmfs.values, dtype=dtypes.float32).transpose()
