@@ -2,8 +2,8 @@ import os
 import json
 import pytest
 import colour
-from pilar.interface import Emitter, Source, Fixture
-from pilar.colorimetry import SpectralData
+from enody.interface import Emitter, Source, Fixture
+from enody.colorimetry import SpectralData
 
 TEST_DATA_EMITTER_REL_PATH = "../data/emitter.json"
 TEST_DATA_SOURCE_REL_PATH = "../data/source.json"

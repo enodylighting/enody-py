@@ -1,4 +1,5 @@
 import colour
+from tinygrad.tensor import Tensor, dtypes
 
 from . import colorimetry
 
@@ -25,6 +26,9 @@ class Emitter:
     def characteristic_spectral_distribution(self):
         return self._characteristic_spectral_distribution
     
+    def tensor(self):
+        return Tensor(self._characteristic_spectral_distribution.values(), dtype=dtypes.float32)
+    
 
 class Source:
     @classmethod
@@ -48,6 +52,10 @@ class Source:
     
     def _emitter_spectral_distributions(self):
         return [e.characteristic_spectral_distribution().spectral_distribution() for e in self._emitters]
+    
+    def tensor(self):
+        emitter_values = [e.characteristic_spectral_distribution().values() for e in self._emitters]
+        return Tensor(emitter_values, dtype=dtypes.float32)
 
     def plot_emitter_spectral_distributions(self):
         colour.plotting.plot_multi_sds(self._emitter_spectral_distributions())

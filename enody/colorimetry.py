@@ -78,3 +78,8 @@ class SpectralData:
             data[round(sample._wavelength)] = sample._value
         dist = colour.SpectralDistribution(data)
         return dist
+
+    def luminance(self):
+        spd = self.spectral_distribution()
+        luminance = colour.sd_to_XYZ(spd)[1]
+        return luminance

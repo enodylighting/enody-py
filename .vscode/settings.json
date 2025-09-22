@@ -4,7 +4,8 @@
         ".pytest_cache/": true,
         ".venv/": true,
         "dist": true,
-        "poetry.lock": true
+        "poetry.lock": true,
+        "**/__pycache__/": true
     },
     "python.testing.pytestArgs": [
         "tests"
