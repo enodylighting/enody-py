@@ -111,3 +111,12 @@ def cie_y_response(test_distributions):
 def cie_z_response(test_distributions):
     """Calculate CIE-Z response for given spectral distributions."""
     return _photopic_response(test_distributions, CIE_Z_RESPONSE_KERNEL)
+
+def cie_1931_chromaticity(test_distributions):
+    x_response = cie_x_response(test_distributions)
+    y_response = cie_y_response(test_distributions)
+    z_response = cie_z_response(test_distributions)
+    response_sum = x_response + y_response + z_response
+    chromaticity_x = x_response / response_sum
+    chromaticity_y = y_response / response_sum
+    return Tensor.stack([chromaticity_x, chromaticity_y])
