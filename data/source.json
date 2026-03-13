@@ -3,7 +3,7 @@
     "emitters": [
         {
             "identifier": "3e6db730-74e2-4040-871b-3b3417e10331",
-            "characteristic_spectral_distribution": {
+            "spectral_data": {
                 "wavelengths": [
                 380.0,
                 381.0,
@@ -814,7 +814,7 @@
         },
         {
             "identifier": "77a66a62-e414-43b0-8e82-79aa3d192d8a",
-            "characteristic_spectral_distribution": {
+            "spectral_data": {
                 "wavelengths": [
                 380.0,
                 381.0,

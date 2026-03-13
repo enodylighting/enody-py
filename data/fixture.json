@@ -5,8 +5,8 @@
       "identifier": "d0253beb-2281-409c-8429-d3a8fc46dca1",
       "emitters": [
         {
-          "identifier": "00000000-0000-6000-8006-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "c382a75f-2301-4689-9135-271df9f76d62",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -816,8 +816,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8000-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "c6c4fa39-224b-4dd7-92b2-7676a270d09a",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -1627,8 +1627,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8016-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "59d176de-17d8-45a9-b116-f8c2a551dddd",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -2438,8 +2438,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-800a-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "831b024c-8403-44fe-8f0f-bda247f0ddc8",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -3249,8 +3249,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8007-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "533a6aa2-d6c9-4be2-a376-f338bef999ae",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -4060,8 +4060,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8008-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "090982b3-7edd-47fe-89a3-d10343b9118a",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -4871,8 +4871,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8001-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "a5e7a72b-1cd7-4e43-b880-c65f4f96544a",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -5682,8 +5682,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8009-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "2d5f44fa-26b7-4e4d-9bb4-da2c684add66",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -6493,8 +6493,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8003-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "5371223a-e60f-4329-910f-f05cebcb99f1",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -7304,8 +7304,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8002-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "2f487fa8-4b43-4dee-8bda-7675f6c72fa9",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -8115,8 +8115,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8004-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "4be5d7ef-61a9-4e44-8038-1e2610b9bba4",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,
@@ -8926,8 +8926,8 @@
           }
         },
         {
-          "identifier": "00000000-0000-6000-8005-000000000000",
-          "characteristic_spectral_distribution": {
+          "identifier": "873c0029-2a20-4eff-956d-0f098a7b1caa",
+          "spectral_data": {
             "wavelengths": [
               380.0,
               381.0,

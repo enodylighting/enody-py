@@ -23,12 +23,12 @@ def test_emitter_deserialization():
 
     # Verify basic properties
     assert emitter.identifier() == emitter_data["identifier"]
-    assert isinstance(emitter.characteristic_spectral_distribution(), SpectralData)
+    assert isinstance(emitter.spectral_data(), SpectralData)
 
     # Check some values in the spectral distribution
-    csd = emitter.characteristic_spectral_distribution()
+    csd = emitter.spectral_data()
     values = csd.values()
-    json_values = emitter_data["characteristic_spectral_distribution"]["values"]
+    json_values = emitter_data["spectral_data"]["values"]
 
     for i in range(len(json_values)):
         assert values[i] == pytest.approx(float(json_values[i]))
@@ -48,7 +48,7 @@ def test_source_deserialization():
     # Verify each emitter
     for i, emitter in enumerate(source.emitters()):
         assert emitter.identifier() == source_data["emitters"][i]["identifier"]
-        assert isinstance(emitter.characteristic_spectral_distribution(), SpectralData)
+        assert isinstance(emitter.spectral_data(), SpectralData)
 
 def test_fixture_deserialization():
     # Load test data

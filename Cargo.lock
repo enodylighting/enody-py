@@ -872,7 +872,7 @@ dependencies = [
 
 [[package]]
 name = "enody-python"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "enody",
  "pyo3",

@@ -9,13 +9,13 @@ class Emitter:
     def from_json(cls, json_data):
         identifier = json_data["identifier"]
 
-        csd_data = json_data["characteristic_spectral_distribution"]
-        wavelengths = csd_data["wavelengths"]
-        values = csd_data["values"]
+        sd_data = json_data["spectral_data"]
+        wavelengths = sd_data["wavelengths"]
+        values = sd_data["values"]
         samples = [colorimetry.SpectralSample(wavelengths[i], values[i]) for i in range(len(wavelengths))]
-        characteristic_spectral_distribution = colorimetry.SpectralData(samples)
+        spectral_data = colorimetry.SpectralData(samples)
 
-        return cls(identifier, characteristic_spectral_distribution)
+        return cls(identifier, spectral_data)
 
     @classmethod
     def from_device(cls, remote_emitter):
@@ -24,19 +24,19 @@ class Emitter:
         sd = remote_emitter.spectral_data()
         return cls(identifier, sd, remote_emitter=remote_emitter)
 
-    def __init__(self, identifier, characteristic_spectral_distribution, remote_emitter=None):
+    def __init__(self, identifier, spectral_data, remote_emitter=None):
         self._identifier = identifier
-        self._characteristic_spectral_distribution = characteristic_spectral_distribution
+        self._spectral_data = spectral_data
         self._remote_emitter = remote_emitter
 
     def identifier(self):
         return self._identifier
 
-    def characteristic_spectral_distribution(self):
-        return self._characteristic_spectral_distribution
+    def spectral_data(self):
+        return self._spectral_data
 
     def tensor(self):
-        return Tensor(self._characteristic_spectral_distribution.values(), dtype=dtypes.float32)
+        return Tensor(self._spectral_data.values(), dtype=dtypes.float32)
 
     def set_flux(self, flux):
         """Set flux on the device. Requires a device-backed emitter."""
@@ -75,10 +75,10 @@ class Source:
         return self._emitters
 
     def _emitter_spectral_distributions(self):
-        return [e.characteristic_spectral_distribution().spectral_distribution() for e in self._emitters]
+        return [e.spectral_data().spectral_distribution() for e in self._emitters]
 
     def tensor(self):
-        emitter_values = [e.characteristic_spectral_distribution().values() for e in self._emitters]
+        emitter_values = [e.spectral_data().values() for e in self._emitters]
         return Tensor(emitter_values, dtype=dtypes.float32)
 
     def plot_emitter_spectral_distributions(self):

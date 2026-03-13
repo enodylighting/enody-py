@@ -1,0 +1,215 @@
+# enody Python SDK
+
+> Python SDK for Enody Lighting spectrally tunable fixtures. Provides USB device control, spectral data access, colorimetry, and GPU-accelerated spectral optimization.
+
+## Architecture
+
+enody_python wraps the enody-rs Rust core library via PyO3 bindings. The native extension lives at `enody._enody_rs`. High-level Python interfaces, optimization, and colorimetry are pure Python on top.
+
+Build system: maturin. Dependencies: tinygrad (tensors/autodiff), colour-science (color science), enody-rs (Rust core via PyO3).
+
+## Device hierarchy
+
+Runtime → Host → Fixture → Source → Emitter
+
+- Runtime: USB connection to a physical EP01 device.
+- Host: The device, identified by UUID and firmware version.
+- Fixture: Addressable light output unit containing Sources.
+- Source: Independently controllable region containing Emitters.
+- Emitter: Single LED channel with a characteristic spectral distribution (401 samples, 380-780nm, 1nm resolution).
+
+## Package structure
+
+```
+enody/
+  __init__.py        # Re-exports: SpectralSample, SpectralData, Chromaticity, Flux, Configuration, Emitter, Source, Fixture
+  _enody_rs.so       # Native PyO3 extension (built from src/lib.rs)
+  device.py          # discover() → list[Runtime]
+  interface.py       # High-level Emitter, Source, Fixture classes
+  colorimetry.py     # Pure Python: XYZ, Chromaticity, Measurement, SpectralSample, SpectralData
+  data.py            # Sample data loaders (no device required)
+  optimize.py        # Differentiable spectral optimization functions (tinygrad)
+```
+
+## Native types (enody._enody_rs)
+
+SpectralSample(wavelength: f32, measurement: f32)
+  .wavelength, .measurement
+
+SpectralData
+  .samples() → list[SpectralSample]
+  .wavelengths() → list[f32]
+  .values() → list[f32]
+  .sample_count() → int
+
+Chromaticity(x: f32, y: f32)
+  .x, .y
+
+Flux
+  Flux.relative(value: f32) → Flux    # value in 0.0-1.0
+  .value → f32
+
+Configuration
+  Configuration.blackbody(cct: f32)    # CCT in Kelvin
+  Configuration.chromatic(x: f32, y: f32)  # CIE 1931 xy
+  Configuration.manual()
+  Configuration.flux()
+  Configuration.spectral()
+
+UsbEnvironment()                       # Not thread-safe
+  .runtimes() → list[Runtime]
+
+Runtime
+  .host() → Host
+  .connect(), .disconnect(), .is_connected()
+
+Host
+  .identifier() → str (UUID)
+  .version() → str
+  .fixtures() → list[Fixture]
+
+## High-level Python classes (enody.interface)
+
+Emitter
+  Emitter.from_json(json_data) → Emitter
+  Emitter.from_device(remote_emitter) → Emitter
+  .identifier() → str
+  .spectral_data() → SpectralData
+  .tensor() → Tensor              # shape: (401,)
+  .set_flux(flux)                  # device-backed only
+
+Source
+  Source.from_json(json_data) → Source
+  Source.from_device(remote_source) → Source
+  .identifier() → str
+  .emitters() → list[Emitter]
+  .tensor() → Tensor              # shape: (n_emitters, 401)
+  .display(config, flux)           # device-backed only
+  .plot_emitter_spectral_distributions()
+  .plot_emitter_chromaticity_diagram()
+
+Fixture
+  Fixture.from_json(json_data) → Fixture
+  Fixture.from_device(remote_fixture) → Fixture
+  .identifier() → str
+  .sources() → list[Source]
+  .tensor() → Tensor              # shape: (n_sources, n_emitters, 401)
+  .display(config, flux)           # device-backed only
+
+## enody.device
+
+discover() → list[Runtime]
+  Scans USB for connected EP01 devices.
+
+## enody.data
+
+Sample data loaders (no device required):
+  sample_emitter() → Emitter        # 1 emitter
+  sample_source() → Source           # 2 emitters
+  sample_fixture() → Fixture         # 1 source, 12 emitters
+
+Photopic response data:
+  melanopic_action() → dict
+  rhodopic_action() → dict
+  s_cone_action() → dict
+  m_cone_action() → dict
+  l_cone_action() → dict
+  cie_x_action() → dict
+  cie_y_action() → dict
+  cie_z_action() → dict
+
+## enody.optimize
+
+All functions operate on tinygrad Tensors and are differentiable.
+
+### SSI (Spectral Similarity Index)
+ssi(test: Tensor, reference: Tensor) → Tensor
+  Input shapes: (n, 301) — 380-680nm range
+  Output: SSI scores (100 = perfect match)
+  Uses resampling convolution, normalization, weighting, and smoothing.
+
+### Photopic response functions
+All accept (n, 401) tensors (380-780nm) and return weighted response sums:
+  melanopic_response(t) → Tensor
+  rhodopic_response(t) → Tensor
+  s_cone_response(t) → Tensor
+  m_cone_response(t) → Tensor
+  l_cone_response(t) → Tensor
+  cie_x_response(t) → Tensor
+  cie_y_response(t) → Tensor
+  cie_z_response(t) → Tensor
+
+### Chromaticity
+cie_1931_chromaticity(t: Tensor) → Tensor
+  Input: (n, 401) tensor
+  Output: (2, 1, n, 1) tensor — [x, y] chromaticity coordinates
+
+## enody.colorimetry
+
+Pure Python color science types with colour-science integration:
+  XYZ(x, y, z)
+  Chromaticity(x, y)
+  Measurement(value)
+  SpectralSample(wavelength, value)
+  SpectralData(samples)
+    .wavelengths() → list
+    .values() → list
+    .sample_count() → int
+    .spectral_distribution() → colour.SpectralDistribution
+    .luminance() → float
+
+## Common optimization pattern
+
+```python
+from tinygrad.tensor import Tensor, dtypes
+from tinygrad import nn
+from enody import Configuration, Flux
+from enody.optimize import ssi, cie_1931_chromaticity
+
+source = fixture.sources()[0]
+spd_matrix = source.tensor()               # (n_emitters, 401)
+n = len(source.emitters())
+
+weights = Tensor.ones(1, n, dtype=dtypes.float32) * 0.5
+optimizer = nn.optim.Adam([weights], lr=1e-3)
+
+for i in range(1000):
+    optimizer.zero_grad()
+    duty_cycles = weights.clip(0, 1)
+    emission = (duty_cycles @ spd_matrix) + 1e-9  # (1, 401)
+
+    # Compute loss using ssi(), cie_1931_chromaticity(), or photopic responses
+    loss = ...
+    loss.backward()
+    optimizer.step()
+
+# Apply to hardware
+for idx, emitter in enumerate(source.emitters()):
+    emitter.set_flux(Flux.relative(float(weights.clip(0,1).numpy().flatten()[idx])))
+fixture.display(Configuration.manual(), Flux.relative(1.0))
+```
+
+## Spectral data conventions
+
+- Full spectrum: 401 samples, 380-780nm, 1nm resolution
+- SSI range: 301 samples, 380-680nm (first 301 of full spectrum)
+- All values are f32
+- Tensors use tinygrad float32 dtype
+
+## JSON data format
+
+```json
+{
+  "identifier": "uuid-string",
+  "sources": [{
+    "identifier": "uuid-string",
+    "emitters": [{
+      "identifier": "uuid-string",
+      "spectral_data": {
+        "wavelengths": [380.0, 381.0, ...],
+        "values": [0.0, 0.001, ...]
+      }
+    }]
+  }]
+}
+```

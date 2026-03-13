@@ -19,7 +19,7 @@ from tinygrad.tensor import Tensor, dtypes
 
 import enody
 import enody.device
-from enody import Fixture, Flux
+from enody import Configuration, Fixture, Flux
 from enody.optimize import ssi, cie_1931_chromaticity
 
 if len(sys.argv) < 2:
@@ -106,6 +106,7 @@ for i in range(ITERATIONS):
         for s_idx, source in enumerate(sources):
             for e_idx, emitter in enumerate(source.emitters()):
                 emitter.set_flux(Flux.relative(float(w_np[s_idx][e_idx])))
+        fixture.display(Configuration.manual(), Flux.relative(1.0))
         t_device = time.monotonic() - t_device
         ssi_vals = ssi_score.numpy().flatten().tolist()
         elapsed = time.monotonic() - t_loop
