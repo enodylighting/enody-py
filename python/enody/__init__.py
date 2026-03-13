@@ -1,9 +1,9 @@
-from .colorimetry import (
-    Measurement,
-    Chromaticity,
-    XYZ,
+from ._enody_rs import (
+    SpectralSample,
     SpectralData,
-    SpectralSample
+    Chromaticity,
+    Flux,
+    Configuration,
 )
 
 from .interface import (
@@ -14,3 +14,4 @@ from .interface import (
 
 from . import data
 from . import optimize
+from . import device

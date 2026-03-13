@@ -1,4 +1,5 @@
-from tinygrad.tensor import Tensor
+from tinygrad.tensor import Tensor, dtypes
+from tinygrad import nn, TinyJit
 from . import data
 
 SSI_RESAMPLING_KERNEL = Tensor([0.5] + [1]*9 + [0.5]).reshape(1, 1, 1, 11) / 10.0

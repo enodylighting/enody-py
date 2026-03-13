@@ -2,5 +2,7 @@
 .venv/
 .vscode/
 dist/
-enody/__pycache__
-poetry.lock
+target/
+**/__pycache__
+*.dSYM/
+*.so

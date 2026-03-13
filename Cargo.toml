@@ -1,0 +1,14 @@
+[package]
+name = "enody-python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "_enody_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+enody = { git = "https://github.com/enodylighting/enody-rs.git", rev = "e28f009" }
+pyo3 = { version = "0.25", features = ["extension-module"] }
+tokio = { version = "1.44", features = ["full"] }
+uuid = { version = "1.16", features = ["v4", "serde"] }

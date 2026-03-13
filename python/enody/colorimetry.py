@@ -22,7 +22,7 @@ class Chromaticity:
 
     def x(self):
         return self._x
-    
+
     def y(self):
         return self._y
 
@@ -40,19 +40,13 @@ class SpectralSample:
 
     def wavelength(self):
         return self._wavelength
-    
+
     def value(self):
         return self._value
 
 class SpectralData:
     def __init__(self, samples):
         self._samples = samples
-
-    # @classmethod
-    # def mix(cls, components, weights):
-    #     components = [c._spectral_data_t for c in components]
-    #     mix_spectral_data_t = lib.spectral_data_mix(components, weights, len(components))
-    #     return SpectralData.from_spectral_data_t(mix_spectral_data_t)
 
     def sample_count(self):
         return len(self._samples)
@@ -61,16 +55,10 @@ class SpectralData:
         return self._samples
 
     def wavelengths(self):
-        wavelengths = []
-        for sample in self._samples:
-            wavelengths.append(sample.wavelength())
-        return wavelengths
+        return [sample.wavelength() for sample in self._samples]
 
     def values(self):
-        values = []
-        for sample in self._samples:
-            values.append(sample.value())
-        return values
+        return [sample.value() for sample in self._samples]
 
     def spectral_distribution(self):
         data = {}

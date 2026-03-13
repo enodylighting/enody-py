@@ -5,7 +5,10 @@
         ".venv/": true,
         "dist": true,
         "poetry.lock": true,
-        "**/__pycache__/": true
+        "**/__pycache__/": true,
+        "**/*.so": true,
+        "**/*.dSYM": true,
+        "target/": true
     },
     "python.testing.pytestArgs": [
         "tests"
