@@ -1,12 +1,16 @@
 from ._enody_rs import (
     SpectralSample,
-    SpectralData,
     Chromaticity,
     Flux,
-    Configuration,
+    Configuration
+)
+
+from .colorimetry import (
+    SpectralData
 )
 
 from .interface import (
+    UsbEnvironment,
     Emitter,
     Fixture,
     Source
@@ -14,4 +18,3 @@ from .interface import (
 
 from . import data
 from . import optimize
-from . import device

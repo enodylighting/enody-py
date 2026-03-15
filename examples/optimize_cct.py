@@ -18,8 +18,7 @@ from tinygrad import nn, TinyJit
 from tinygrad.tensor import Tensor, dtypes
 
 import enody
-import enody.device
-from enody import Configuration, Fixture, Flux
+from enody import Configuration, Fixture, Flux, UsbEnvironment
 from enody.optimize import ssi, cie_1931_chromaticity
 
 if len(sys.argv) < 2:
@@ -30,8 +29,10 @@ TARGET_CCT = int(sys.argv[1])
 ITERATIONS = 10000
 UPDATE_INTERVAL = 100
 
+environment = UsbEnvironment()
+
 # Discover attached devices
-runtimes = enody.device.discover()
+runtimes = environment.runtimes()
 if not runtimes:
     print("No EP01 devices found.")
     raise SystemExit(1)
@@ -42,8 +43,7 @@ print(f"Connected to runtime (connected={runtime.is_connected()})")
 host = runtime.host()
 print(f"Host {host.identifier()} (v{host.version()})")
 
-remote_fixture = host.fixtures()[0]
-fixture = Fixture.from_device(remote_fixture)
+fixture = host.fixtures()[0]
 sources = fixture.sources()
 num_sources = len(sources)
 n = len(sources[0].emitters())

@@ -45,6 +45,14 @@ class SpectralSample:
         return self._value
 
 class SpectralData:
+    @classmethod
+    def from_rs(cls, spectral_data_rs):
+        """Create an Emitter from a native RemoteEmitter (device-backed)."""
+        wavelengths = spectral_data_rs.wavelengths()
+        values = spectral_data_rs.values()
+        samples = [SpectralSample(w, v) for (w, v) in zip(wavelengths, values)]
+        return cls(samples)
+
     def __init__(self, samples):
         self._samples = samples
 
