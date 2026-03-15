@@ -8,7 +8,8 @@ name = "_enody_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-enody = { git = "https://github.com/enodylighting/enody-rs.git", rev = "e28f009" }
+enody = { git = "https://github.com/enodylighting/enody-rs.git", rev = "5c609fa" }
+env_logger = "0.11"
 pyo3 = { version = "0.25", features = ["extension-module"] }
 tokio = { version = "1.44", features = ["full"] }
 uuid = { version = "1.16", features = ["v4", "serde"] }

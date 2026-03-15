@@ -269,6 +269,10 @@ impl PyRuntime {
     fn is_connected(&self) -> bool {
         self.inner.is_connected()
     }
+
+    fn enable_logging(&self) {
+        self.inner.enable_logging();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -413,8 +417,71 @@ impl PyEmitter {
 }
 
 // ---------------------------------------------------------------------------
+// UpdateTarget (wraps EP01UpdateTarget)
+// ---------------------------------------------------------------------------
+
+#[pyclass(name = "UpdateTarget", unsendable)]
+pub struct PyUpdateTarget {
+    inner: enody::update::EP01UpdateTarget,
+}
+
+#[pymethods]
+impl PyUpdateTarget {
+    #[staticmethod]
+    fn discover() -> PyResult<Vec<PyUpdateTarget>> {
+        let rt = get_or_init_runtime();
+        let targets = rt.block_on(enody::update::EP01UpdateTarget::attached());
+        Ok(targets
+            .into_iter()
+            .map(|t| PyUpdateTarget { inner: t })
+            .collect())
+    }
+
+    fn identifier(&self) -> String {
+        self.inner.info().identifier.to_string()
+    }
+
+    fn version(&self) -> String {
+        self.inner.info().version.to_string()
+    }
+
+    fn mac_address(&self) -> Option<String> {
+        self.inner.mac_address().map(|s| s.to_string())
+    }
+
+    fn available_firmware(&self) -> PyResult<Vec<String>> {
+        let rt = get_or_init_runtime();
+        let versions = rt
+            .block_on(self.inner.available_firmware())
+            .map_err(enody_err)?;
+        Ok(versions.iter().map(|fv| fv.version().to_string()).collect())
+    }
+
+    fn update_available(&self) -> PyResult<bool> {
+        let rt = get_or_init_runtime();
+        rt.block_on(self.inner.update_available()).map_err(enody_err)
+    }
+
+    fn update_device(&self, version: String) -> PyResult<()> {
+        let rt = get_or_init_runtime();
+        rt.block_on(self.inner.update_device(&version))
+            .map_err(enody_err)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Module
 // ---------------------------------------------------------------------------
+
+#[pyfunction]
+fn init_logging() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        env_logger::Builder::from_default_env()
+            .format_timestamp_millis()
+            .init();
+    });
+}
 
 #[pymodule]
 fn _enody_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -429,5 +496,7 @@ fn _enody_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyFixture>()?;
     m.add_class::<PySource>()?;
     m.add_class::<PyEmitter>()?;
+    m.add_class::<PyUpdateTarget>()?;
+    m.add_function(pyo3::wrap_pyfunction!(init_logging, m)?)?;
     Ok(())
 }

@@ -13,6 +13,9 @@ dependencies = [
     "tinygrad",
 ]
 
+[project.scripts]
+enody = "enody.cli:main"
+
 [project.optional-dependencies]
 dev = ["pytest>=6.0"]
 

@@ -28,6 +28,9 @@ class Runtime:
     def is_connected(self):
         return self._runtime_rs.is_connected()
 
+    def enable_logging(self):
+        self._runtime_rs.enable_logging()
+
 class Host:
     @classmethod
     def from_rs(cls, host_rs):
@@ -157,9 +160,7 @@ class Emitter:
     def from_device(cls, remote_emitter):
         """Create an Emitter from a native RemoteEmitter (device-backed)."""
         identifier = remote_emitter.identifier()
-        remote_sd = remote_emitter.spectral_data()
-        sd = colorimetry.SpectralData.from_rs(remote_sd)
-        return cls(identifier, sd, remote_emitter=remote_emitter)
+        return cls(identifier, None, remote_emitter=remote_emitter)
 
     def __init__(self, identifier, spectral_data, remote_emitter=None):
         self._identifier = identifier
@@ -170,13 +171,43 @@ class Emitter:
         return self._identifier
 
     def spectral_data(self):
+        if self._spectral_data is None and self._remote_emitter is not None:
+            remote_sd = self._remote_emitter.spectral_data()
+            self._spectral_data = colorimetry.SpectralData.from_rs(remote_sd)
         return self._spectral_data
 
     def tensor(self):
-        return Tensor(self._spectral_data.values(), dtype=dtypes.float32)
+        return Tensor(self.spectral_data().values(), dtype=dtypes.float32)
 
     def set_flux(self, flux):
         """Set flux on the device. Requires a device-backed emitter."""
         if self._remote_emitter is None:
             raise RuntimeError("set_flux requires a device-backed emitter")
         return self._remote_emitter.set_flux(flux)
+
+class UpdateTarget:
+    @classmethod
+    def discover(cls):
+        """Discover attached EP01 devices for firmware updates."""
+        return [cls(t) for t in _enody_rs.UpdateTarget.discover()]
+
+    def __init__(self, target_rs):
+        self._target_rs = target_rs
+
+    def identifier(self):
+        return self._target_rs.identifier()
+
+    def version(self):
+        return self._target_rs.version()
+
+    def mac_address(self):
+        return self._target_rs.mac_address()
+
+    def available_firmware(self):
+        return self._target_rs.available_firmware()
+
+    def update_available(self):
+        return self._target_rs.update_available()
+
+    def update_device(self, version):
+        return self._target_rs.update_device(version)

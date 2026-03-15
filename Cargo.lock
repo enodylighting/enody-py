@@ -851,7 +851,7 @@ dependencies = [
 [[package]]
 name = "enody"
 version = "0.1.2"
-source = "git+https://github.com/enodylighting/enody-rs.git?rev=e28f009#e28f0093580e4555554b39eb06a069441944a801"
+source = "git+https://github.com/enodylighting/enody-rs.git?rev=5c609fa#5c609fa54b76fc2247381ba6820913b4c21f1395"
 dependencies = [
  "async-trait",
  "clap",
@@ -875,6 +875,7 @@ name = "enody-python"
 version = "0.1.2"
 dependencies = [
  "enody",
+ "env_logger",
  "pyo3",
  "tokio",
  "uuid",

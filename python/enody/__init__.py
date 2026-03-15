@@ -2,7 +2,8 @@ from ._enody_rs import (
     SpectralSample,
     Chromaticity,
     Flux,
-    Configuration
+    Configuration,
+    init_logging
 )
 
 from .colorimetry import (
@@ -13,7 +14,8 @@ from .interface import (
     UsbEnvironment,
     Emitter,
     Fixture,
-    Source
+    Source,
+    UpdateTarget
 )
 
 from . import data
