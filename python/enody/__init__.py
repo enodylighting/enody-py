@@ -1,13 +1,13 @@
 from ._enody_rs import (
-    SpectralSample,
-    Chromaticity,
     Flux,
     Configuration,
     init_logging
 )
 
 from .colorimetry import (
-    SpectralData
+    Chromaticity,
+    SpectralData,
+    SpectralSample
 )
 
 from .interface import (

@@ -131,8 +131,8 @@ def cmd_download_spectral_data(args):
                     "spectral_data": {
                         "samples": [
                             {
-                                "wavelength": s.wavelength(),
-                                "measurement": s.value(),
+                                "wavelength": s.wavelength,
+                                "measurement": s.measurement,
                             }
                             for s in samples
                         ]

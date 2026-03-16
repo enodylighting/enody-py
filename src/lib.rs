@@ -10,6 +10,46 @@ fn enody_err(e: enody::Error) -> PyErr {
 }
 
 // ---------------------------------------------------------------------------
+// SpectralData
+// ---------------------------------------------------------------------------
+
+#[pyclass(name = "SpectralData")]
+pub struct PySpectralData {
+    inner: enody::spectral::SpectralData,
+}
+
+#[pymethods]
+impl PySpectralData {
+    fn samples(&self) -> Vec<PySpectralSample> {
+        self.inner
+            .samples()
+            .iter()
+            .map(|s| PySpectralSample { inner: s.clone() })
+            .collect()
+    }
+
+    fn wavelengths(&self) -> Vec<f32> {
+        self.inner.samples().iter().map(|s| s.wavelength()).collect()
+    }
+
+    fn measurements(&self) -> Vec<f32> {
+        self.inner
+            .samples()
+            .iter()
+            .map(|s| s.measurement())
+            .collect()
+    }
+
+    fn sample_count(&self) -> usize {
+        self.inner.samples().len()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("SpectralData(samples={})", self.inner.samples().len())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SpectralSample
 // ---------------------------------------------------------------------------
 
@@ -44,46 +84,6 @@ impl PySpectralSample {
             self.inner.wavelength(),
             self.inner.measurement()
         )
-    }
-}
-
-// ---------------------------------------------------------------------------
-// SpectralData
-// ---------------------------------------------------------------------------
-
-#[pyclass(name = "SpectralData")]
-pub struct PySpectralData {
-    inner: enody::spectral::SpectralData,
-}
-
-#[pymethods]
-impl PySpectralData {
-    fn samples(&self) -> Vec<PySpectralSample> {
-        self.inner
-            .samples()
-            .iter()
-            .map(|s| PySpectralSample { inner: s.clone() })
-            .collect()
-    }
-
-    fn wavelengths(&self) -> Vec<f32> {
-        self.inner.samples().iter().map(|s| s.wavelength()).collect()
-    }
-
-    fn values(&self) -> Vec<f32> {
-        self.inner
-            .samples()
-            .iter()
-            .map(|s| s.measurement())
-            .collect()
-    }
-
-    fn sample_count(&self) -> usize {
-        self.inner.samples().len()
-    }
-
-    fn __repr__(&self) -> String {
-        format!("SpectralData(samples={})", self.inner.samples().len())
     }
 }
 
@@ -287,6 +287,14 @@ pub struct PyHost {
 
 #[pymethods]
 impl PyHost {
+    fn identifier(&self) -> String {
+        self.inner.identifier().to_string()
+    }
+
+    fn version(&self) -> String {
+        self.inner.version().to_string()
+    }
+
     fn fixtures(&self) -> PyResult<Vec<PyFixture>> {
         let rt = get_or_init_runtime();
         let fixtures = rt
@@ -296,14 +304,6 @@ impl PyHost {
             .into_iter()
             .map(|f| PyFixture { inner: f })
             .collect())
-    }
-
-    fn identifier(&self) -> String {
-        self.inner.identifier().to_string()
-    }
-
-    fn version(&self) -> String {
-        self.inner.version().to_string()
     }
 }
 
@@ -319,6 +319,10 @@ pub struct PyFixture {
 
 #[pymethods]
 impl PyFixture {
+    fn identifier(&self) -> String {
+        self.inner.identifier().to_string()
+    }
+
     fn sources(&self) -> PyResult<Vec<PySource>> {
         let rt = get_or_init_runtime();
         let sources = rt
@@ -340,10 +344,6 @@ impl PyFixture {
             PyFlux { inner: f },
         ))
     }
-
-    fn identifier(&self) -> String {
-        self.inner.identifier().to_string()
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +357,10 @@ pub struct PySource {
 
 #[pymethods]
 impl PySource {
+    fn identifier(&self) -> String {
+        self.inner.identifier().to_string()
+    }
+
     fn emitters(&self) -> PyResult<Vec<PyEmitter>> {
         let rt = get_or_init_runtime();
         let emitters = rt
@@ -378,10 +382,6 @@ impl PySource {
             PyFlux { inner: f },
         ))
     }
-
-    fn identifier(&self) -> String {
-        self.inner.identifier().to_string()
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -395,6 +395,10 @@ pub struct PyEmitter {
 
 #[pymethods]
 impl PyEmitter {
+    fn identifier(&self) -> String {
+        self.inner.identifier().to_string()
+    }
+
     fn spectral_data(&self) -> PyResult<PySpectralData> {
         let rt = get_or_init_runtime();
         let sd = rt
@@ -409,10 +413,6 @@ impl PyEmitter {
             .block_on(self.inner.set_flux(flux.inner.clone()))
             .map_err(enody_err)?;
         Ok(PyFlux { inner: result })
-    }
-
-    fn identifier(&self) -> String {
-        self.inner.identifier().to_string()
     }
 }
 

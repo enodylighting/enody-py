@@ -3,7 +3,6 @@ import os
 from . import interface
 
 _data_cache = {}
-
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 def _json_data(filename):
