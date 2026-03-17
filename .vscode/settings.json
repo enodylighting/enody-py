@@ -1,6 +1,7 @@
 {
     "files.exclude": {
         ".gitignore": true,
+        ".gitmodules": true,
         ".pytest_cache/": true,
         ".venv/": true,
         "dist": true,
