@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "enody"
-version = "0.1.2"
+version = "0.1.4"
 dependencies = [
  "async-trait",
  "clap",
@@ -940,7 +940,7 @@ dependencies = [
 [[package]]
 name = "espflash"
 version = "4.3.0"
-source = "git+https://github.com/esp-rs/espflash.git?rev=4b0cb41#4b0cb41e51ddf8f705905feb3f4b1f1ba8bff2e6"
+source = "git+https://github.com/esp-rs/espflash.git?rev=96725d4#96725d49ee070997544648a395d658fba6d9fb26"
 dependencies = [
  "addr2line",
  "base64",
