@@ -15,49 +15,45 @@ def _json_data(filename):
         _data_cache[filename] = data
         return data
 
-def sample_emitter():
-    emitter_data = _json_data("emitter.json")
-    if emitter_data is not None:
-        return interface.Emitter.from_json(emitter_data)
-
-def sample_source():
-    source_data = _json_data("source.json")
-    if source_data is not None:
-        return interface.Source.from_json(source_data)
-
 def sample_fixture():
     fixture_data = _json_data("fixture.json")
     if fixture_data is not None:
         return interface.Fixture.from_json(fixture_data)
 
-def melanopic_action():
+def sample_source():
+    fixture = sample_fixture()
+    if fixture is not None:
+        return fixture.sources()[0]
+
+def sample_emitter():
+    source = sample_source()
+    if source is not None:
+        return source.emitters()[0]
+
+def _response_measurements(name):
     response_data = _json_data("response.json")
-    return response_data["Melanopic response"]
+    return [s["measurement"] for s in response_data[name]]
+
+def melanopic_action():
+    return _response_measurements("Melanopic response")
 
 def rhodopic_action():
-    response_data = _json_data("response.json")
-    return response_data["Rhodopic response"]
+    return _response_measurements("Rhodopic response")
 
 def s_cone_action():
-    response_data = _json_data("response.json")
-    return response_data["S-cone-opic response"]
+    return _response_measurements("S-cone-opic response")
 
 def m_cone_action():
-    response_data = _json_data("response.json")
-    return response_data["M-cone-opic response"]
+    return _response_measurements("M-cone-opic response")
 
 def l_cone_action():
-    response_data = _json_data("response.json")
-    return response_data["L-cone-opic response"]
+    return _response_measurements("L-cone-opic response")
 
 def cie_x_action():
-    response_data = _json_data("response.json")
-    return response_data["CIE-X response"]
+    return _response_measurements("CIE-X response")
 
 def cie_y_action():
-    response_data = _json_data("response.json")
-    return response_data["CIE-Y response"]
+    return _response_measurements("CIE-Y response")
 
 def cie_z_action():
-    response_data = _json_data("response.json")
-    return response_data["CIE-Z response"]
+    return _response_measurements("CIE-Z response")

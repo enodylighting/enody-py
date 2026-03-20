@@ -128,7 +128,7 @@ class Source:
         return [e.spectral_data().spectral_distribution() for e in self._emitters]
 
     def tensor(self):
-        emitter_values = [e.spectral_data().values() for e in self._emitters]
+        emitter_values = [e.spectral_data().measurements() for e in self._emitters]
         return Tensor(emitter_values, dtype=dtypes.float32)
 
     def plot_emitter_spectral_distributions(self):
@@ -149,9 +149,7 @@ class Emitter:
         identifier = json_data["identifier"]
 
         sd_data = json_data["spectral_data"]
-        wavelengths = sd_data["wavelengths"]
-        values = sd_data["values"]
-        samples = [colorimetry.SpectralSample(wavelengths[i], values[i]) for i in range(len(wavelengths))]
+        samples = [colorimetry.SpectralSample(s["wavelength"], s["measurement"]) for s in sd_data]
         spectral_data = colorimetry.SpectralData(samples)
 
         return cls(identifier, spectral_data)

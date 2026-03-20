@@ -5,20 +5,16 @@ import colour
 from enody.interface import Emitter, Source, Fixture
 from enody.colorimetry import SpectralData
 
-TEST_DATA_EMITTER_REL_PATH = "../data/emitter.json"
-TEST_DATA_SOURCE_REL_PATH = "../data/source.json"
-TEST_DATA_FIXTURE_REL_PATH = "../data/fixture.json"
-
-TEST_DATA_EMITTER_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), TEST_DATA_EMITTER_REL_PATH))
-TEST_DATA_SOURCE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), TEST_DATA_SOURCE_REL_PATH))
+TEST_DATA_FIXTURE_REL_PATH = "../python/enody/data/fixture.json"
 TEST_DATA_FIXTURE_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), TEST_DATA_FIXTURE_REL_PATH))
 
 def test_emitter_deserialization():
     # Load test data
-    with open(TEST_DATA_EMITTER_PATH, 'r') as f:
-        emitter_data = json.load(f)
+    with open(TEST_DATA_FIXTURE_PATH, 'r') as f:
+        fixture_data = json.load(f)
 
     # Create Emitter object from JSON
+    emitter_data = fixture_data["sources"][0]["emitters"][0]
     emitter = Emitter.from_json(emitter_data)
 
     # Verify basic properties
@@ -27,18 +23,19 @@ def test_emitter_deserialization():
 
     # Check some values in the spectral distribution
     csd = emitter.spectral_data()
-    values = csd.values()
-    json_values = emitter_data["spectral_data"]["values"]
+    measurements = csd.measurements()
+    json_samples = emitter_data["spectral_data"]
 
-    for i in range(len(json_values)):
-        assert values[i] == pytest.approx(float(json_values[i]))
+    for i, sample in enumerate(json_samples):
+        assert measurements[i] == pytest.approx(float(sample["measurement"]))
 
 def test_source_deserialization():
     # Load test data
-    with open(TEST_DATA_SOURCE_PATH, 'r') as f:
-        source_data = json.load(f)
+    with open(TEST_DATA_FIXTURE_PATH, 'r') as f:
+        fixture_data = json.load(f)
 
     # Create Source object from JSON
+    source_data = fixture_data["sources"][0]
     source = Source.from_json(source_data)
 
     # Verify basic properties

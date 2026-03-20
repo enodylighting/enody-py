@@ -9,7 +9,7 @@ def test_melanopic_response():
 
     for emitter in source.emitters():
         csd = emitter.spectral_data()
-        values.append(csd.values())
+        values.append(csd.measurements())
 
     values_tensor = Tensor(values)
     print(melanopic_response(values_tensor).numpy())
@@ -20,7 +20,7 @@ def test_cie_1931_chromaticity():
 
     for emitter in source.emitters():
         csd = emitter.spectral_data()
-        values.append(csd.values())
+        values.append(csd.measurements())
 
     values_tensor = Tensor(values)
     xy = cie_1931_chromaticity(values_tensor)

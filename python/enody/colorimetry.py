@@ -37,15 +37,15 @@ class SpectralData:
         return self._samples
 
     def wavelengths(self):
-        return [sample.wavelength() for sample in self._samples]
+        return [sample.wavelength for sample in self._samples]
 
     def measurements(self):
-        return [sample.measurement() for sample in self._samples]
+        return [sample.measurement for sample in self._samples]
 
     def spectral_distribution(self):
         data = {}
         for sample in self._samples:
-            data[round(sample.wavelength())] = sample.measurement()
+            data[round(sample.wavelength)] = sample.measurement
         dist = colour.SpectralDistribution(data)
         return dist
 

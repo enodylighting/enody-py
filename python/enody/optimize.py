@@ -44,14 +44,14 @@ def ssi(test_distributions, refernce_distributions):
     return SSI
 
 # Response kernels
-MELANOPIC_RESPONSE_KERNEL = Tensor(data.melanopic_action()["values"])
-RHODOPIC_RESPONSE_KERNEL = Tensor(data.rhodopic_action()["values"])
-S_CONE_RESPONSE_KERNEL = Tensor(data.s_cone_action()["values"])
-M_CONE_RESPONSE_KERNEL = Tensor(data.m_cone_action()["values"])
-L_CONE_RESPONSE_KERNEL = Tensor(data.l_cone_action()["values"])
-CIE_X_RESPONSE_KERNEL = Tensor(data.cie_x_action()["values"])
-CIE_Y_RESPONSE_KERNEL = Tensor(data.cie_y_action()["values"])
-CIE_Z_RESPONSE_KERNEL = Tensor(data.cie_z_action()["values"])
+MELANOPIC_RESPONSE_KERNEL = Tensor(data.melanopic_action())
+RHODOPIC_RESPONSE_KERNEL = Tensor(data.rhodopic_action())
+S_CONE_RESPONSE_KERNEL = Tensor(data.s_cone_action())
+M_CONE_RESPONSE_KERNEL = Tensor(data.m_cone_action())
+L_CONE_RESPONSE_KERNEL = Tensor(data.l_cone_action())
+CIE_X_RESPONSE_KERNEL = Tensor(data.cie_x_action())
+CIE_Y_RESPONSE_KERNEL = Tensor(data.cie_y_action())
+CIE_Z_RESPONSE_KERNEL = Tensor(data.cie_z_action())
 
 def _photopic_response(test_distributions, response_kernel):
     """

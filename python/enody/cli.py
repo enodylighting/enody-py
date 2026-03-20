@@ -128,15 +128,13 @@ def cmd_download_spectral_data(args):
 
                 emitter_outputs.append({
                     "identifier": emitter.identifier(),
-                    "spectral_data": {
-                        "samples": [
-                            {
-                                "wavelength": s.wavelength,
-                                "measurement": s.measurement,
-                            }
-                            for s in samples
-                        ]
-                    },
+                    "spectral_data": [
+                        {
+                            "wavelength": s.wavelength,
+                            "measurement": s.measurement,
+                        }
+                        for s in samples
+                    ],
                 })
 
             source_outputs.append({
