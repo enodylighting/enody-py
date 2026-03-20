@@ -4,6 +4,29 @@ Python SDK for [Enody Lighting](https://enody.lighting) spectrally tunable fixtu
 
 `enody` provides device discovery and control over USB, spectral data access, colorimetric calculations, and GPU-accelerated spectral optimization via [tinygrad](https://github.com/tinygrad/tinygrad). It wraps the [enody-rs](https://github.com/enodylighting/enody-rs) Rust core through native PyO3 bindings.
 
+## Updating an EP01
+
+Install the package, connect your EP01 over USB, and run:
+
+```bash
+pip install enody
+enody update
+```
+
+The CLI will detect the device, list available firmware versions, and prompt you to select one. To use an offline firmware image instead:
+
+```bash
+enody update -f firmware.bin
+```
+
+Other useful commands:
+
+```bash
+enody list                    # List connected devices
+enody info                    # Show device details (fixtures, sources, emitters)
+enody download-spectral-data  # Save emitter spectral data to JSON
+```
+
 ## Installation
 
 Requires Python >= 3.8.
@@ -66,21 +89,26 @@ No device required — use bundled spectral data for algorithm development:
 ```python
 import enody.data
 
-fixture = enody.data.sample_fixture()   # 12-emitter fixture
-source = enody.data.sample_source()     # 2-emitter source
-emitter = enody.data.sample_emitter()   # Single emitter
+fixture = enody.data.sample_fixture()   # 1 source, 12 emitters
+source = enody.data.sample_source()     # First source from fixture
+emitter = enody.data.sample_emitter()   # First emitter from source
 ```
 
-## Device hierarchy
+## Architecture
 
-Enody models a strict hierarchy:
+Enody is a federated system where Runtimes communicate via message passing. An **Environment** is the entry point for device discovery and resource access — it owns connections to remote Runtimes and exposes the resources they contain. Discovery environments (`UsbEnvironment`) actively scan for devices, while user-defined environments allow manual organization of resources.
+
+Fixtures are addressed by identifier, independent of which Host owns them. Commands route through the Enody device network with hop-aware routing, enabling location transparency and multi-hop delivery.
+
+### Entity hierarchy
 
 ```
-Runtime → Host → Fixture → Source → Emitter
+Environment → Runtime → Host → Fixture → Source → Emitter
 ```
 
-- **Runtime** — USB connection to a physical device.
-- **Host** — The device itself, identified by UUID and firmware version.
+- **Environment** — Discovery and organizational surface. Owns connections to remote Runtimes and provides access to their resources.
+- **Runtime** — A message-passing participant in the Enody mesh. Has exactly one Host.
+- **Host** — The physical device, identified by UUID and firmware version.
 - **Fixture** — An addressable light output unit.
 - **Source** — An independently controllable region within a fixture.
 - **Emitter** — A single LED channel with a characteristic spectral distribution (380--780 nm, 1 nm resolution, 401 samples).
@@ -141,27 +169,23 @@ fixture.display(Configuration.manual(), Flux.relative(1.0))
 
 ## API reference
 
-### `enody.device`
-
-| Function | Description |
-|---|---|
-| `discover()` | Returns a list of `Runtime` objects for connected EP01 devices. |
-
 ### `enody.data`
+
+All sample data is extracted from a single bundled fixture (`data/fixture.json`).
 
 | Function | Returns |
 |---|---|
-| `sample_emitter()` | Single `Emitter` (1 channel) |
-| `sample_source()` | `Source` with 2 emitters |
 | `sample_fixture()` | `Fixture` with 1 source, 12 emitters |
-| `melanopic_action()` | Melanopic response curve data |
-| `rhodopic_action()` | Rhodopic response curve data |
-| `s_cone_action()` | S-cone-opic response curve data |
-| `m_cone_action()` | M-cone-opic response curve data |
-| `l_cone_action()` | L-cone-opic response curve data |
-| `cie_x_action()` | CIE X color matching function data |
-| `cie_y_action()` | CIE Y color matching function data |
-| `cie_z_action()` | CIE Z color matching function data |
+| `sample_source()` | First `Source` from the sample fixture |
+| `sample_emitter()` | First `Emitter` from the sample source |
+| `melanopic_action()` | Melanopic response measurements (list of float) |
+| `rhodopic_action()` | Rhodopic response measurements |
+| `s_cone_action()` | S-cone-opic response measurements |
+| `m_cone_action()` | M-cone-opic response measurements |
+| `l_cone_action()` | L-cone-opic response measurements |
+| `cie_x_action()` | CIE X color matching function measurements |
+| `cie_y_action()` | CIE Y color matching function measurements |
+| `cie_z_action()` | CIE Z color matching function measurements |
 
 ### `enody.optimize`
 
@@ -189,8 +213,8 @@ SSI accepts `(n, 301)` tensors (380--680 nm):
 
 Pure Python color science types with `colour-science` integration:
 
-- `SpectralData(samples)` — spectral distribution with `.spectral_distribution()` and `.luminance()`
-- `SpectralSample(wavelength, value)`
+- `SpectralData(samples)` — spectral distribution with `.spectral_distribution()` and `.tensor()`
+- `SpectralSample(wavelength, measurement)` — single wavelength/measurement pair (properties, not methods)
 - `Chromaticity(x, y)`
 - `XYZ(x, y, z)`
 
@@ -204,9 +228,41 @@ Pure Python color science types with `colour-science` integration:
 | `Configuration.manual()` | Manual per-emitter control |
 | `Configuration.flux()` | Flux-only control mode |
 | `Configuration.spectral()` | Spectral control mode |
-| `SpectralSample(wavelength, measurement)` | Single wavelength/value pair |
+| `SpectralSample(wavelength, measurement)` | Single wavelength/measurement pair |
 | `SpectralData` | Collection of spectral samples |
 | `Chromaticity(x, y)` | CIE chromaticity coordinate |
+
+## JSON data format
+
+Spectral data is encoded as a list of `SpectralSample` objects, directly reflecting the internal type:
+
+```json
+{
+  "identifier": "uuid-string",
+  "sources": [{
+    "identifier": "uuid-string",
+    "emitters": [{
+      "identifier": "uuid-string",
+      "spectral_data": [
+        {"wavelength": 380.0, "measurement": 0.0},
+        {"wavelength": 381.0, "measurement": 0.001},
+        ...
+      ]
+    }]
+  }]
+}
+```
+
+Response data (`response.json`) uses the same sample list format:
+
+```json
+{
+  "Melanopic response": [
+    {"wavelength": 380.0, "measurement": 0.0},
+    ...
+  ]
+}
+```
 
 ## Dependencies
 

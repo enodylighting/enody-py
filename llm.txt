@@ -4,17 +4,20 @@
 
 ## Architecture
 
+Enody is a federated system where Runtimes communicate via message passing. An Environment is the entry point for device discovery and resource access — it owns connections to remote Runtimes and exposes the resources they contain. Discovery environments (UsbEnvironment) actively scan for devices. Fixtures are addressed by identifier, independent of which Host owns them, enabling mesh routing and location transparency.
+
 enody_python wraps the enody-rs Rust core library via PyO3 bindings. The native extension lives at `enody._enody_rs`. High-level Python interfaces, optimization, and colorimetry are pure Python on top.
 
 Build system: maturin. Dependencies: tinygrad (tensors/autodiff), colour-science (color science), enody-rs (Rust core via PyO3).
 
-## Device hierarchy
+## Entity hierarchy
 
-Runtime → Host → Fixture → Source → Emitter
+Environment → Runtime → Host → Fixture → Source → Emitter
 
-- Runtime: USB connection to a physical EP01 device.
-- Host: The device, identified by UUID and firmware version.
-- Fixture: Addressable light output unit containing Sources.
+- Environment: Discovery and organizational surface. Owns connections to remote Runtimes and provides access to their resources. Implementations: UsbEnvironment, UserDefinedEnvironment.
+- Runtime: Message-passing participant in the Enody mesh. Has exactly one Host. A Host can run multiple Runtimes.
+- Host: The physical device, identified by UUID and firmware version.
+- Fixture: Addressable light output unit containing Sources. Addressed by identifier independent of Host.
 - Source: Independently controllable region containing Emitters.
 - Emitter: Single LED channel with a characteristic spectral distribution (401 samples, 380-780nm, 1nm resolution).
 
@@ -22,24 +25,26 @@ Runtime → Host → Fixture → Source → Emitter
 
 ```
 enody/
-  __init__.py        # Re-exports: SpectralSample, SpectralData, Chromaticity, Flux, Configuration, Emitter, Source, Fixture
-  _enody_rs.so       # Native PyO3 extension (built from src/lib.rs)
-  device.py          # discover() → list[Runtime]
-  interface.py       # High-level Emitter, Source, Fixture classes
-  colorimetry.py     # Pure Python: XYZ, Chromaticity, Measurement, SpectralSample, SpectralData
+  __init__.py        # Re-exports: Configuration, Flux, Chromaticity, SpectralData, SpectralSample, Emitter, Fixture, Source, UpdateTarget, UsbEnvironment
+  interface.py       # High-level Environment, Runtime, Fixture, Source, Emitter, UpdateTarget classes
+  colorimetry.py     # XYZ, Chromaticity, SpectralSample, SpectralData
   data.py            # Sample data loaders (no device required)
   optimize.py        # Differentiable spectral optimization functions (tinygrad)
+  cli.py             # CLI entry point (enody list, info, monitor, download-spectral-data, update)
+  data/
+    fixture.json     # Bundled fixture with 1 source, 12 emitters
+    response.json    # Photopic response functions (melanopic, rhodopic, cones, CIE XYZ)
 ```
 
 ## Native types (enody._enody_rs)
 
 SpectralSample(wavelength: f32, measurement: f32)
-  .wavelength, .measurement
+  .wavelength, .measurement   # Properties (getters), not methods
 
 SpectralData
   .samples() → list[SpectralSample]
   .wavelengths() → list[f32]
-  .values() → list[f32]
+  .measurements() → list[f32]
   .sample_count() → int
 
 Chromaticity(x: f32, y: f32)
@@ -96,27 +101,22 @@ Fixture
   .tensor() → Tensor              # shape: (n_sources, n_emitters, 401)
   .display(config, flux)           # device-backed only
 
-## enody.device
-
-discover() → list[Runtime]
-  Scans USB for connected EP01 devices.
-
 ## enody.data
 
-Sample data loaders (no device required):
-  sample_emitter() → Emitter        # 1 emitter
-  sample_source() → Source           # 2 emitters
+All sample data is extracted from the single bundled fixture (data/fixture.json):
   sample_fixture() → Fixture         # 1 source, 12 emitters
+  sample_source() → Source           # First source from fixture
+  sample_emitter() → Emitter        # First emitter from source
 
-Photopic response data:
-  melanopic_action() → dict
-  rhodopic_action() → dict
-  s_cone_action() → dict
-  m_cone_action() → dict
-  l_cone_action() → dict
-  cie_x_action() → dict
-  cie_y_action() → dict
-  cie_z_action() → dict
+Photopic response data (from data/response.json):
+  melanopic_action() → list[float]   # 401 measurement values
+  rhodopic_action() → list[float]
+  s_cone_action() → list[float]
+  m_cone_action() → list[float]
+  l_cone_action() → list[float]
+  cie_x_action() → list[float]
+  cie_y_action() → list[float]
+  cie_z_action() → list[float]
 
 ## enody.optimize
 
@@ -149,14 +149,21 @@ cie_1931_chromaticity(t: Tensor) → Tensor
 Pure Python color science types with colour-science integration:
   XYZ(x, y, z)
   Chromaticity(x, y)
-  Measurement(value)
-  SpectralSample(wavelength, value)
+  SpectralSample(wavelength, measurement)    # Properties: .wavelength, .measurement
   SpectralData(samples)
     .wavelengths() → list
-    .values() → list
+    .measurements() → list
     .sample_count() → int
     .spectral_distribution() → colour.SpectralDistribution
-    .luminance() → float
+    .tensor() → Tensor
+
+## CLI (enody command)
+
+  enody list                          # List connected EP01 devices
+  enody info                          # Show detailed device/fixture/source/emitter info
+  enody monitor                       # Stream device log output
+  enody download-spectral-data [-o FILE]  # Save spectral data as JSON
+  enody update [-f FILE]              # Update device firmware (interactive version picker, or offline .bin)
 
 ## Common optimization pattern
 
@@ -198,6 +205,8 @@ fixture.display(Configuration.manual(), Flux.relative(1.0))
 
 ## JSON data format
 
+Spectral data is encoded as a list of SpectralSample objects, directly reflecting the internal type:
+
 ```json
 {
   "identifier": "uuid-string",
@@ -205,11 +214,22 @@ fixture.display(Configuration.manual(), Flux.relative(1.0))
     "identifier": "uuid-string",
     "emitters": [{
       "identifier": "uuid-string",
-      "spectral_data": {
-        "wavelengths": [380.0, 381.0, ...],
-        "values": [0.0, 0.001, ...]
-      }
+      "spectral_data": [
+        {"wavelength": 380.0, "measurement": 0.0},
+        {"wavelength": 381.0, "measurement": 0.001}
+      ]
     }]
   }]
+}
+```
+
+Response data (response.json) uses the same sample list format:
+
+```json
+{
+  "Melanopic response": [
+    {"wavelength": 380.0, "measurement": 0.0},
+    {"wavelength": 381.0, "measurement": 0.001}
+  ]
 }
 ```

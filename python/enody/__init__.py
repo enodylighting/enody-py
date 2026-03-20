@@ -1,6 +1,6 @@
 from ._enody_rs import (
-    Flux,
     Configuration,
+    Flux,
     init_logging
 )
 
@@ -11,11 +11,11 @@ from .colorimetry import (
 )
 
 from .interface import (
-    UsbEnvironment,
     Emitter,
     Fixture,
     Source,
-    UpdateTarget
+    UpdateTarget,
+    UsbEnvironment
 )
 
 from . import data
