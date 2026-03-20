@@ -35,7 +35,22 @@ Requires Python >= 3.8.
 pip install enody
 ```
 
-Building from source requires [maturin](https://www.maturin.rs/) and a Rust toolchain:
+### System dependencies
+
+USB device access requires [libusb](https://libusb.info/):
+
+| Platform | Command |
+|----------|---------|
+| macOS | `brew install libusb` |
+| Debian / Ubuntu | `sudo apt install libusb-1.0-0` |
+| Fedora / RHEL | `sudo dnf install libusb1` |
+| Arch | `sudo pacman -S libusb` |
+| Alpine | `apk add libusb` |
+| Windows | Bundled — no action needed |
+
+### Building from source
+
+Requires [maturin](https://www.maturin.rs/) and a Rust toolchain:
 
 ```bash
 pip install maturin
