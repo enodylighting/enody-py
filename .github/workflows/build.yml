@@ -45,17 +45,17 @@ jobs:
       matrix:
         include:
           # ── Linux glibc (manylinux) ──
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
-          - { os: ubuntu-latest, target: aarch64-unknown-linux-gnu }
+          - { os: ubuntu-latest,      target: x86_64-unknown-linux-gnu }
+          - { os: ubuntu-24.04-arm,   target: aarch64-unknown-linux-gnu }
           # ── Linux musl (Alpine & friends) ──
-          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl,  manylinux: musllinux_1_2 }
-          - { os: ubuntu-latest, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2 }
+          - { os: ubuntu-latest,      target: x86_64-unknown-linux-musl,  manylinux: musllinux_1_2 }
+          - { os: ubuntu-24.04-arm,   target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2 }
           # ── macOS ──
-          - { os: macos-13,     target: x86_64-apple-darwin }
-          - { os: macos-14,     target: aarch64-apple-darwin }
+          - { os: macos-15-intel,     target: x86_64-apple-darwin }
+          - { os: macos-15,     target: aarch64-apple-darwin }
           # ── Windows ──
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
-          - { os: windows-latest, target: aarch64-pc-windows-msvc }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,11 +64,19 @@ jobs:
       # Set up Python interpreters for macOS / Windows native builds.
       # Linux builds run inside manylinux containers which ship their own.
       - uses: actions/setup-python@v5
-        if: runner.os != 'Linux'
+        if: runner.os != 'Linux' && matrix.target != 'aarch64-pc-windows-msvc'
         with:
           python-version: |
             3.9
             3.10
+            3.11
+            3.12
+            3.13
+      # ARM64 Windows Python only exists from 3.11+
+      - uses: actions/setup-python@v5
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        with:
+          python-version: |
             3.11
             3.12
             3.13
