@@ -38,7 +38,7 @@ jobs:
   # main & tags: full cross-platform wheel builds
   # ──────────────────────────────────────────────────────────────────────
   wheels:
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
