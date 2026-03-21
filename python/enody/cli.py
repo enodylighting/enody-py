@@ -191,7 +191,9 @@ def cmd_update(args):
     print(f"Device: {target.identifier()} (version {target.version()})")
 
     if args.firmware:
-        target.update_device(args.firmware)
+        print(f"Flashing local firmware image: {args.firmware}")
+        target.flash_firmware_image(args.firmware)
+        print("Flash complete.")
         return
 
     versions = target.available_firmware()

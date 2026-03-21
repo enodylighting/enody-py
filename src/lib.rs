@@ -467,6 +467,12 @@ impl PyUpdateTarget {
         rt.block_on(self.inner.update_device(&version))
             .map_err(enody_err)
     }
+
+    fn flash_firmware_image(&self, firmware_path: String) -> PyResult<()> {
+        self.inner
+            .flash_firmware_image(std::path::Path::new(&firmware_path))
+            .map_err(enody_err)
+    }
 }
 
 // ---------------------------------------------------------------------------

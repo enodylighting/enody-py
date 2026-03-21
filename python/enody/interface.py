@@ -222,3 +222,6 @@ class UpdateTarget:
 
     def update_device(self, version):
         return self._target_rs.update_device(version)
+
+    def flash_firmware_image(self, firmware_path):
+        return self._target_rs.flash_firmware_image(firmware_path)
