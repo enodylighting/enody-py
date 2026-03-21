@@ -1,4 +1,4 @@
-import colour
+from colour import SpectralDistribution
 from tinygrad.tensor import Tensor, dtypes
 
 from ._enody_rs import Chromaticity, SpectralSample
@@ -50,7 +50,7 @@ class SpectralData:
         data = {}
         for sample in self._samples:
             data[round(sample.wavelength)] = sample.measurement
-        dist = colour.SpectralDistribution(data, name=self._name)
+        dist = SpectralDistribution(data, name=self._name)
         return dist
 
     def tensor(self):

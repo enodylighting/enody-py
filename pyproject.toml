@@ -11,6 +11,7 @@ requires-python = ">=3.8"
 dependencies = [
     "colour-science",
     "tinygrad",
+    "matplotlib"
 ]
 
 [project.scripts]

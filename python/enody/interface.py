@@ -1,4 +1,4 @@
-import colour
+from colour.plotting import plot_multi_sds, plot_sds_in_chromaticity_diagram_CIE1931
 import matplotlib.pyplot as plt
 from tinygrad.tensor import Tensor, dtypes
 
@@ -144,10 +144,10 @@ class Source:
         plt.close(fig)
 
     def plot_emitter_spectral_distributions(self, display=True, output=None):
-        self._plot(colour.plotting.plot_multi_sds, display=display, output=output)
+        self._plot(plot_multi_sds, display=display, output=output)
 
     def plot_emitter_chromaticity_diagram(self, display=True, output=None):
-        self._plot(colour.plotting.plot_sds_in_chromaticity_diagram_CIE1931, display=display, output=output)
+        self._plot(plot_sds_in_chromaticity_diagram_CIE1931, display=display, output=output)
 
     def display(self, config, flux):
         """Send a display command to the device. Requires a device-backed source."""
