@@ -871,7 +871,7 @@ dependencies = [
 
 [[package]]
 name = "enody-python"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "enody",
  "env_logger",
