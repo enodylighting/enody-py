@@ -153,8 +153,8 @@ def step():
     # SSI (Spectral Similarity Index) compares spectral shape over the
     # 375-675 nm range (301 samples: 375-379 nm are zeros, then 380-675 nm from emission).
     pad_zeros = Tensor.zeros(emission.shape[0], 5, dtype=emission.dtype)
-    emission_ssi = Tensor.cat([pad_zeros, emission.shrink((None, (0, 296)))], axis=1)
-    ref_ssi = Tensor.cat([pad_zeros, ref_tensor.shrink((None, (0, 296)))], axis=1)
+    emission_ssi = Tensor.cat(pad_zeros, emission.shrink((None, (0, 296))), dim=1)
+    ref_ssi = Tensor.cat(pad_zeros, ref_tensor.shrink((None, (0, 296))), dim=1)
     ssi_score = ssi(emission_ssi, ref_ssi)
     spectral_loss = (100.0 - ssi_score).sum()
 
