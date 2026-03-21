@@ -1,4 +1,5 @@
 import colour
+import matplotlib.pyplot as plt
 from tinygrad.tensor import Tensor, dtypes
 
 from . import colorimetry, _enody_rs
@@ -131,11 +132,22 @@ class Source:
         emitter_values = [e.spectral_data().measurements() for e in self._emitters]
         return Tensor(emitter_values, dtype=dtypes.float32)
 
-    def plot_emitter_spectral_distributions(self):
-        colour.plotting.plot_multi_sds(self._emitter_spectral_distributions())
+    def _plot(self, plot_fn, display=True, output=None):
+        plot_fn(self._emitter_spectral_distributions(), show=False)
+        fig = plt.gcf()
+        fig.set_size_inches(1920 / 100, 1080 / 100)
+        fig.set_dpi(100)
+        if output is not None:
+            fig.savefig(output, bbox_inches='tight')
+        if display:
+            plt.show()
+        plt.close(fig)
 
-    def plot_emitter_chromaticity_diagram(self):
-        colour.plotting.plot_sds_in_chromaticity_diagram_CIE1931(self._emitter_spectral_distributions())
+    def plot_emitter_spectral_distributions(self, display=True, output=None):
+        self._plot(colour.plotting.plot_multi_sds, display=display, output=output)
+
+    def plot_emitter_chromaticity_diagram(self, display=True, output=None):
+        self._plot(colour.plotting.plot_sds_in_chromaticity_diagram_CIE1931, display=display, output=output)
 
     def display(self, config, flux):
         """Send a display command to the device. Requires a device-backed source."""
@@ -171,7 +183,8 @@ class Emitter:
     def spectral_data(self):
         if self._spectral_data is None and self._remote_emitter is not None:
             remote_sd = self._remote_emitter.spectral_data()
-            self._spectral_data = colorimetry.SpectralData.from_rs(remote_sd)
+            name = "Emitter " + self._identifier[:8].upper()
+            self._spectral_data = colorimetry.SpectralData.from_rs(remote_sd, name=name)
         return self._spectral_data
 
     def tensor(self):

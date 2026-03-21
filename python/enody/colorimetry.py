@@ -20,21 +20,25 @@ class XYZ:
 
 class SpectralData:
     @classmethod
-    def from_rs(cls, spectral_data_rs):
+    def from_rs(cls, spectral_data_rs, name=None):
         """Create an Emitter from a native RemoteEmitter (device-backed)."""
         wavelengths = spectral_data_rs.wavelengths()
         measurements = spectral_data_rs.measurements()
         samples = [SpectralSample(w, v) for (w, v) in zip(wavelengths, measurements)]
-        return cls(samples)
+        return cls(samples, name)
 
-    def __init__(self, samples):
+    def __init__(self, samples, name=None):
         self._samples = samples
+        self._name = name
 
-    def sample_count(self):
-        return len(self._samples)
+    def name(self):
+        return self._name
 
     def samples(self):
         return self._samples
+
+    def sample_count(self):
+        return len(self._samples)
 
     def wavelengths(self):
         return [sample.wavelength for sample in self._samples]
@@ -46,7 +50,7 @@ class SpectralData:
         data = {}
         for sample in self._samples:
             data[round(sample.wavelength)] = sample.measurement
-        dist = colour.SpectralDistribution(data)
+        dist = colour.SpectralDistribution(data, name=self._name)
         return dist
 
     def tensor(self):
