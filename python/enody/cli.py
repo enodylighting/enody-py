@@ -88,6 +88,11 @@ def cmd_monitor(args):
 
 
 def cmd_download_spectral_data(args):
+    import os
+    if os.path.exists(args.output):
+        print(f"Error: Output file already exists: {args.output}", file=sys.stderr)
+        sys.exit(1)
+
     env = enody.UsbEnvironment()
     runtimes = env.runtimes()
 
