@@ -168,6 +168,24 @@ def cmd_update(args):
         print("No EP01 devices found.")
         return
 
+    # Warn about unresponsive devices (nil UUID means HostInfo query failed)
+    nil_uuid = "00000000-0000-0000-0000-000000000000"
+    unresponsive = [t for t in targets if t.identifier() == nil_uuid]
+
+    if unresponsive and not args.force:
+        print("Warning: The following device(s) did not respond to host identification:")
+        for t in unresponsive:
+            mac = t.mac_address() or "unknown"
+            print(f"  - MAC address: {mac}")
+        print("Verify only EP01 devices are attached to this computer before force updating.")
+        try:
+            answer = input("Continue? [y/N]: ").strip()
+        except EOFError:
+            answer = ""
+        if answer.lower() != "y":
+            print("Update aborted.")
+            return
+
     if len(targets) == 1:
         target = targets[0]
     else:
@@ -261,6 +279,10 @@ def main():
         "-f", "--firmware",
         metavar="FILE",
         help="Path to an offline firmware image (.bin)",
+    )
+    update_parser.add_argument(
+        "--force", action="store_true",
+        help="Force update even if device does not respond to host identification",
     )
 
     args = parser.parse_args()
