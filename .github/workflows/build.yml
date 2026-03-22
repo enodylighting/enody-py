@@ -48,11 +48,11 @@ jobs:
           - { os: ubuntu-latest,      target: x86_64-unknown-linux-gnu }
           - { os: ubuntu-24.04-arm,   target: aarch64-unknown-linux-gnu }
           # ── Linux musl (Alpine & friends) ──
-          - { os: ubuntu-latest,      target: x86_64-unknown-linux-musl,  manylinux: musllinux_1_2 }
-          - { os: ubuntu-24.04-arm,   target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2 }
+          - { os: ubuntu-latest,      target: x86_64-unknown-linux-musl,  manylinux: manylinux_2_34 }
+          - { os: ubuntu-24.04-arm,   target: aarch64-unknown-linux-musl, manylinux: manylinux_2_34 }
           # ── macOS ──
-          - { os: macos-15-intel,     target: x86_64-apple-darwin }
-          - { os: macos-15,     target: aarch64-apple-darwin }
+          - { os: macos-15-intel, target: x86_64-apple-darwin }
+          - { os: macos-15,       target: aarch64-apple-darwin }
           # ── Windows ──
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
           - { os: windows-11-arm, target: aarch64-pc-windows-msvc }
@@ -102,6 +102,11 @@ jobs:
             elif command -v apt-get &>/dev/null; then
               apt-get update && apt-get install -y libusb-1.0-0-dev libudev-dev pkg-config
             fi
+            # ring's cc-rs looks for <arch>-linux-musl-gcc when targeting musl
+            # from a glibc host. Tell cc-rs to use the regular gcc instead;
+            # ring's C sources are self-contained and don't need musl headers.
+            export CC_x86_64_unknown_linux_musl=gcc
+            export CC_aarch64_unknown_linux_musl=gcc
 
       - uses: actions/upload-artifact@v4
         with:
