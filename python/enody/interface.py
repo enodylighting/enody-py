@@ -1,6 +1,5 @@
 from colour.plotting import plot_multi_sds, plot_sds_in_chromaticity_diagram_CIE1931
 import matplotlib.pyplot as plt
-from tinygrad.tensor import Tensor, dtypes
 
 from . import colorimetry, _enody_rs
 
@@ -88,6 +87,7 @@ class Fixture:
         return self._sources
 
     def tensor(self):
+        from tinygrad.tensor import Tensor
         return Tensor.stack([s.tensor() for s in self._sources])
 
     def display(self, config, flux):
@@ -129,6 +129,7 @@ class Source:
         return [e.spectral_data().spectral_distribution() for e in self._emitters]
 
     def tensor(self):
+        from tinygrad.tensor import Tensor, dtypes
         emitter_values = [e.spectral_data().measurements() for e in self._emitters]
         return Tensor(emitter_values, dtype=dtypes.float32)
 
@@ -188,6 +189,7 @@ class Emitter:
         return self._spectral_data
 
     def tensor(self):
+        from tinygrad.tensor import Tensor, dtypes
         return Tensor(self.spectral_data().values(), dtype=dtypes.float32)
 
     def set_flux(self, flux):
