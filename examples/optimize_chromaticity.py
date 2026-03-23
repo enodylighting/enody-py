@@ -26,11 +26,11 @@ Usage:
 
 import sys
 
-from tinygrad import nn
-from tinygrad.tensor import Tensor, dtypes
-
 from enody import Configuration, Flux, UsbEnvironment
 from enody.optimize import cie_1931_chromaticity
+
+from tinygrad import nn
+from tinygrad.tensor import Tensor, dtypes
 
 # ---------------------------------------------------------------------------
 # CLI arguments

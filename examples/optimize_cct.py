@@ -29,12 +29,12 @@ Usage:
 import sys
 import time
 
-import colour
-from tinygrad import nn, TinyJit
-from tinygrad.tensor import Tensor, dtypes
-
 from enody import Configuration, Flux, UsbEnvironment
 from enody.optimize import ssi, cie_1931_chromaticity
+
+from colour import SpectralShape, sd_blackbody
+from tinygrad import nn, TinyJit
+from tinygrad.tensor import Tensor, dtypes
 
 # ---------------------------------------------------------------------------
 # CLI arguments
@@ -108,14 +108,14 @@ spd_matrices = Tensor.stack([s.tensor() for s in sources])
 # ---------------------------------------------------------------------------
 # Build the reference blackbody spectrum
 # ---------------------------------------------------------------------------
-# colour.sd_blackbody generates a theoretical Planckian radiator spectrum at
+# sd_blackbody generates a theoretical Planckian radiator spectrum at
 # the target CCT.  The spectral shape (380-780 nm, 1 nm steps) matches the
 # emitter SPD sampling so the tensors are directly comparable.
 # We tile the reference across num_sources so every source is optimized
 # toward the same target.
 
-spectral_shape = colour.SpectralShape(380, 780, 1)
-ref_sd = colour.sd_blackbody(TARGET_CCT, spectral_shape)
+spectral_shape = SpectralShape(380, 780, 1)
+ref_sd = sd_blackbody(TARGET_CCT, spectral_shape)
 ref_values = ref_sd.values.tolist()
 ref_tensor = Tensor([ref_values] * num_sources, dtype=dtypes.float32)
 
