@@ -63,15 +63,15 @@ maturin develop
 
 ```python
 import enody
-import enody.device
 
-runtimes = enody.device.discover()
+env = enody.UsbEnvironment()
+runtimes = env.runtimes()
 runtime = runtimes[0]
 
 host = runtime.host()
 print(f"Host {host.identifier()} (v{host.version()})")
 
-fixture = enody.Fixture.from_device(host.fixtures()[0])
+fixture = host.fixtures()[0]
 sources = fixture.sources()
 ```
 

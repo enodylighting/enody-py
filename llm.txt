@@ -25,8 +25,8 @@ Environment → Runtime → Host → Fixture → Source → Emitter
 
 ```
 enody/
-  __init__.py        # Re-exports: Configuration, Flux, Chromaticity, SpectralData, SpectralSample, Emitter, Fixture, Source, UpdateTarget, UsbEnvironment
-  interface.py       # High-level Environment, Runtime, Fixture, Source, Emitter, UpdateTarget classes
+  __init__.py        # Re-exports: Configuration, Flux, init_logging, Chromaticity, SpectralData, SpectralSample, Emitter, Fixture, Source, UpdateTarget, UsbEnvironment
+  interface.py       # High-level UsbEnvironment, Runtime, Host, Fixture, Source, Emitter, UpdateTarget classes
   colorimetry.py     # XYZ, Chromaticity, SpectralSample, SpectralData
   data.py            # Sample data loaders (no device required)
   optimize.py        # Differentiable spectral optimization functions (tinygrad)
