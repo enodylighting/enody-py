@@ -225,7 +225,7 @@ Pure Python color science types with colour-science integration:
 ## CLI (enody command)
 
   enody list                          # List connected EP01 devices
-  enody info                          # Show detailed device/fixture/source/emitter info
+  enody info                          # Show detailed USB/WiFi device/fixture/source/emitter info
   enody monitor                       # Stream device log output
   enody wifi-scan                     # Scan WiFi networks through first USB EP01
   enody wifi-join SSID                # Join a WiFi network through first USB EP01
