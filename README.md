@@ -23,7 +23,7 @@ Other useful commands:
 
 ```bash
 enody list                    # List connected devices
-enody info                    # Show device details (fixtures, sources, emitters)
+enody info                    # Show USB/WiFi device details (fixtures, sources, emitters)
 enody wifi-scan               # Scan WiFi networks through a USB-attached device
 enody wifi-setup              # Join WiFi and save a USB-authenticated token
 enody wifi-generate-token     # Generate and verify a WiFi token over WiFi

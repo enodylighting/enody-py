@@ -22,8 +22,10 @@ def cmd_list(args):
 
 
 def cmd_info(args):
-    env = enody.UsbEnvironment()
-    runtimes = env.runtimes()
+    discovered = enody.discover_runtimes(
+        wifi_timeout_ms=getattr(args, "wifi_timeout_ms", 800),
+    )
+    runtimes = discovered.runtimes()
 
     if not runtimes:
         print("No Enody devices found.")
@@ -422,7 +424,16 @@ def main():
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("list", help="List all attached Enody devices")
-    subparsers.add_parser("info", help="Display detailed information about all attached devices")
+    info_parser = subparsers.add_parser(
+        "info",
+        help="Display detailed information about USB and WiFi devices",
+    )
+    info_parser.add_argument(
+        "--wifi-timeout-ms",
+        type=int,
+        default=800,
+        help="mDNS discovery timeout in milliseconds for saved-token WiFi devices (default: 800)",
+    )
     subparsers.add_parser("monitor", help="Monitor log output from all attached devices")
 
     subparsers.add_parser("wifi-scan", help="Scan WiFi networks using the first USB device")
