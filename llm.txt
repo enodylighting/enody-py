@@ -1,14 +1,14 @@
 # enody Python SDK
 
-> Python SDK for Enody Lighting spectrally tunable fixtures. Provides USB device control, spectral data access, colorimetry, and GPU-accelerated spectral optimization.
+> Python SDK for Enody Lighting spectrally tunable fixtures. Provides USB and WiFi device control, WiFi pairing/token authorization, spectral data access, colorimetry, and GPU-accelerated spectral optimization.
 
 ## Architecture
 
-Enody is a federated system where Runtimes communicate via message passing. An Environment is the entry point for device discovery and resource access — it owns connections to remote Runtimes and exposes the resources they contain. Discovery environments (UsbEnvironment) actively scan for devices. Fixtures are addressed by identifier, independent of which Host owns them, enabling mesh routing and location transparency.
+Enody is a federated system where Runtimes communicate via message passing. An Environment is the entry point for device discovery and resource access — it owns connections to remote Runtimes and exposes the resources they contain. Discovery environments (UsbEnvironment, WifiEnvironment) actively scan for devices. Fixtures are addressed by identifier, independent of which Host owns them, enabling mesh routing and location transparency.
 
 enody_python wraps the enody-rs Rust core library via PyO3 bindings. The native extension lives at `enody._enody_rs`. High-level Python interfaces, optimization, and colorimetry are pure Python on top.
 
-Build system: maturin. Dependencies: tinygrad (tensors/autodiff), colour-science (color science), enody-rs (Rust core via PyO3).
+Build system: maturin. Dependencies: tinygrad (tensors/autodiff), colour-science (color science), enody-rs (Rust core via PyO3). WiFi support comes from enody-rs 0.2.x and includes mDNS discovery, Noise token pairing, token storage, and authenticated WiFi runtimes.
 
 ## Entity hierarchy
 
@@ -25,12 +25,12 @@ Environment → Runtime → Host → Fixture → Source → Emitter
 
 ```
 enody/
-  __init__.py        # Re-exports: Configuration, Flux, init_logging, Chromaticity, SpectralData, SpectralSample, Emitter, Fixture, Source, UpdateTarget, UsbEnvironment
-  interface.py       # High-level UsbEnvironment, Runtime, Host, Fixture, Source, Emitter, UpdateTarget classes
+  __init__.py        # Re-exports core types, USB/WiFi environments, token helpers, device classes
+  interface.py       # High-level UsbEnvironment, WifiEnvironment, Runtime, Host, Fixture, Source, Emitter, Token, TokenStore, WifiConnection, UpdateTarget classes
   colorimetry.py     # XYZ, Chromaticity, SpectralSample, SpectralData
   data.py            # Sample data loaders (no device required)
   optimize.py        # Differentiable spectral optimization functions (tinygrad)
-  cli.py             # CLI entry point (enody list, info, monitor, download-spectral-data, update)
+  cli.py             # CLI entry point (enody list, info, monitor, wifi-scan, wifi-join, wifi-setup, wifi-generate-token, download-spectral-data, update)
   data/
     fixture.json     # Bundled fixture with 1 source, 12 emitters
     response.json    # Photopic response functions (melanopic, rhodopic, cones, CIE XYZ)
@@ -63,15 +63,56 @@ Configuration
 
 UsbEnvironment()                       # Not thread-safe
   .runtimes() → list[Runtime]
+  .start_discovery(), .stop_discovery()
+  .next_runtime_event() → EnvironmentRuntimeEvent
+
+WifiEnvironment(tokens=None, timeout_ms=800, excluded_host_ids=None)
+  # tokens=None loads TokenStore.load().tokens(); [] disables saved-token discovery
+  .runtimes() → list[Runtime]
+  .start_discovery(), .stop_discovery()
+  .next_runtime_event() → EnvironmentRuntimeEvent
+  .exclude_host_id(host_id), .remove_excluded_host_id(host_id)
+
+EnvironmentRuntimeEvent
+  .kind() → "arrived" | "left"
+  .runtime() → Runtime
+
+Token(host_id: str, key_id: str, data: list[int])
+  .host_id(), .key_id(), .data()
+  .to_dict() / Token.from_dict(data)
+  repr redacts token data
+
+TokenStore
+  TokenStore.load(), TokenStore.load_from_path(path)
+  TokenStore.save_token(token)
+  .tokens() → list[Token]
+  .upsert(token), .save(), .save_to_path(path)
+
+WifiNetwork
+  .ssid(), .bssid(), .channel(), .rssi(), .auth()
+
+WifiDiscoveredDevice
+  .endpoint(), .host_id(), .firmware_version(), .is_ep01()
+  .is_token_generation_candidate()
+
+WifiConnection
+  .discover_token_generation_devices(timeout_ms=800) → list[WifiDiscoveredDevice]
+  .generate_token_from_discovered_device(device, on_approval=None) → Token
+  .generate_token_from_endpoint(endpoint, on_approval=None) → Token
+  .runtime_from_discovered_device(token, device) → Runtime
+  .runtime_from_endpoint(token, endpoint) → Runtime
 
 Runtime
   .host() → Host
   .connect(), .disconnect(), .is_connected()
+  .generate_token() → Token
 
 Host
   .identifier() → str (UUID)
   .version() → str
   .fixtures() → list[Fixture]
+  .wifi_scan() → list[WifiNetwork]
+  .wifi_join(ssid, password="")
 
 ## High-level Python classes (enody.interface)
 
@@ -100,6 +141,30 @@ Fixture
   .sources() → list[Source]
   .tensor() → Tensor              # shape: (n_sources, n_emitters, 401)
   .display(config, flux)           # device-backed only
+
+## WiFi authorization flow
+
+Primary Home Assistant style flow:
+  token = enody.generate_wifi_token(on_approval=callback, save=False)
+
+Behavior:
+  1. Discover token-generation candidates over mDNS using WifiConnection.discover_token_generation_devices().
+  2. If exactly one device is found, run unauthenticated WiFi pairing over Noise_NN.
+  3. Device sends approval instructions via callback; user physically approves on EP01.
+  4. Returned Token is verified by reconnecting with the authenticated WiFi Noise PSK flow and reading host.identifier().
+  5. Verification retries 8 times with 500ms delay by default.
+  6. Token can be stored by Home Assistant via token.to_dict(), or by enody via TokenStore.save_token(token).
+
+Helpers:
+  generate_wifi_token(device=None, endpoint=None, timeout_ms=800, on_approval=None, verify=True, save=False)
+  verify_wifi_token_from_discovered_device(token, device)
+  verify_wifi_token_from_endpoint(token, endpoint)
+  discover_runtimes(tokens=None, include_usb=True, include_wifi=True, wifi_timeout_ms=800)
+
+Saved-token runtime discovery:
+  tokens = enody.TokenStore.load().tokens()
+  env = enody.WifiEnvironment(tokens)
+  runtimes = env.runtimes()
 
 ## enody.data
 
@@ -162,6 +227,10 @@ Pure Python color science types with colour-science integration:
   enody list                          # List connected EP01 devices
   enody info                          # Show detailed device/fixture/source/emitter info
   enody monitor                       # Stream device log output
+  enody wifi-scan                     # Scan WiFi networks through first USB EP01
+  enody wifi-join SSID                # Join a WiFi network through first USB EP01
+  enody wifi-setup                    # Interactive scan/join and USB-authenticated token save
+  enody wifi-generate-token           # mDNS WiFi pairing, verification, and token save
   enody download-spectral-data [-o FILE]  # Save spectral data as JSON
   enody update [-f FILE]              # Update device firmware (interactive version picker, or offline .bin)
 

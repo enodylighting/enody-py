@@ -1,4 +1,5 @@
 import argparse
+import getpass
 import json
 import signal
 import sys
@@ -254,6 +255,164 @@ def cmd_update(args):
     print("Update complete.")
 
 
+def _first_usb_runtime():
+    env = enody.UsbEnvironment()
+    runtimes = env.runtimes()
+    if not runtimes:
+        raise RuntimeError("No Enody devices found over USB.")
+    return env, runtimes[0]
+
+
+def _print_wifi_networks(networks):
+    if not networks:
+        print("No WiFi networks found.")
+        return
+
+    print("WiFi networks:")
+    for idx, network in enumerate(networks):
+        ssid = network.ssid() or "<hidden>"
+        rssi = network.rssi() if network.rssi() is not None else "-"
+        channel = network.channel() if network.channel() is not None else "-"
+        auth = network.auth() or "unknown"
+        print(f"  {idx + 1:>2}. {ssid:<32} rssi={rssi!s:>4} channel={channel!s:<2} auth={auth}")
+
+
+def _select_wifi_ssid(networks):
+    _print_wifi_networks(networks)
+    if not networks:
+        return _prompt_manual_ssid()
+
+    while True:
+        line = input("Pick a network number (Enter to type SSID): ").strip()
+        if not line:
+            return _prompt_manual_ssid()
+        try:
+            selected = int(line)
+        except ValueError:
+            print(f"Enter a number from 1 to {len(networks)} or press Enter to type an SSID.")
+            continue
+        if selected < 1 or selected > len(networks):
+            print(f"Enter a number from 1 to {len(networks)} or press Enter to type an SSID.")
+            continue
+
+        ssid = networks[selected - 1].ssid()
+        if ssid:
+            return ssid
+        print("Selected network has a hidden SSID.")
+        return _prompt_manual_ssid()
+
+
+def _prompt_manual_ssid():
+    while True:
+        ssid = input("SSID: ").strip()
+        if ssid:
+            return ssid
+        print("SSID cannot be empty.")
+
+
+def _select_wifi_device(devices):
+    if not devices:
+        raise RuntimeError("No EP01 devices found for WiFi token generation.")
+    if len(devices) == 1:
+        return devices[0]
+
+    print("Available EP01s:")
+    for idx, device in enumerate(devices):
+        host_id = device.host_id() or "unknown"
+        endpoint = device.endpoint() or "unknown"
+        firmware = device.firmware_version() or "unknown firmware"
+        print(f"  {idx + 1:>2}. host={host_id} endpoint={endpoint} firmware={firmware}")
+
+    while True:
+        line = input(f"Pick an EP01 number [1-{len(devices)}]: ").strip()
+        try:
+            selected = int(line)
+        except ValueError:
+            print(f"Enter a number from 1 to {len(devices)}.")
+            continue
+        if 1 <= selected <= len(devices):
+            return devices[selected - 1]
+        print(f"Enter a number from 1 to {len(devices)}.")
+
+
+def cmd_wifi_scan(args):
+    _, runtime = _first_usb_runtime()
+    networks = runtime.host().wifi_scan()
+    _print_wifi_networks(networks)
+
+
+def cmd_wifi_join(args):
+    _, runtime = _first_usb_runtime()
+    password = args.password
+    if password is None:
+        password = getpass.getpass("Password (leave empty for open network): ")
+    print(f"Joining WiFi network {args.ssid!r}...")
+    runtime.host().wifi_join(args.ssid, password)
+    print(f"Joined WiFi network {args.ssid!r}.")
+
+
+def cmd_wifi_setup(args):
+    _, runtime = _first_usb_runtime()
+    host = runtime.host()
+
+    print("Scanning for WiFi networks...")
+    networks = host.wifi_scan()
+    ssid = args.ssid or _select_wifi_ssid(networks)
+    password = args.password
+    if password is None:
+        password = getpass.getpass("Password (leave empty for open network): ")
+
+    print(f"Joining WiFi network {ssid!r}...")
+    host.wifi_join(ssid, password)
+    print(f"Joined WiFi network {ssid!r}.")
+
+    print("Generating USB-authenticated WiFi token...")
+    token = runtime.generate_token()
+    path = enody.TokenStore.save_token(token)
+    print(f"Saved token for host {token.host_id()} to {path}.")
+
+
+def cmd_wifi_generate_token(args):
+    def on_approval(instruction):
+        print(f"Approval required: {instruction}")
+
+    if args.endpoint:
+        print(f"Generating WiFi token from {args.endpoint}.")
+        token = enody.generate_wifi_token(
+            endpoint=args.endpoint,
+            on_approval=on_approval,
+            verify_attempts=args.verify_attempts,
+            verify_retry_ms=args.verify_retry_ms,
+            save=False,
+        )
+    else:
+        print("Searching for EP01s over mDNS...")
+        devices = enody.WifiConnection.discover_token_generation_devices(args.timeout_ms)
+        device = _select_wifi_device(devices)
+        print(f"Generating WiFi token from {device.endpoint()}.")
+        token = enody.generate_wifi_token(
+            device=device,
+            on_approval=on_approval,
+            verify_attempts=args.verify_attempts,
+            verify_retry_ms=args.verify_retry_ms,
+            save=False,
+        )
+
+    print(f"Verified WiFi token for host {token.host_id()}.")
+    if args.no_save:
+        print("Token was not saved.")
+        return
+
+    if args.token_store:
+        store = enody.TokenStore.load_from_path(args.token_store)
+        store.upsert(token)
+        store.save_to_path(args.token_store)
+        print(f"Saved token to {args.token_store}.")
+    else:
+        path = enody.TokenStore.save_token(token)
+        print(f"Saved token to {path}.")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="enody",
@@ -265,6 +424,66 @@ def main():
     subparsers.add_parser("list", help="List all attached Enody devices")
     subparsers.add_parser("info", help="Display detailed information about all attached devices")
     subparsers.add_parser("monitor", help="Monitor log output from all attached devices")
+
+    subparsers.add_parser("wifi-scan", help="Scan WiFi networks using the first USB device")
+
+    wifi_join_parser = subparsers.add_parser(
+        "wifi-join",
+        help="Join a WiFi network using the first USB device",
+    )
+    wifi_join_parser.add_argument("ssid", help="WiFi SSID")
+    wifi_join_parser.add_argument(
+        "-p",
+        "--password",
+        help="WiFi password. Omit to prompt securely; use an empty string for open networks.",
+    )
+
+    wifi_setup_parser = subparsers.add_parser(
+        "wifi-setup",
+        help="Scan, join WiFi, and save a USB-authenticated token",
+    )
+    wifi_setup_parser.add_argument("--ssid", help="WiFi SSID. Omit to pick from scan results.")
+    wifi_setup_parser.add_argument(
+        "-p",
+        "--password",
+        help="WiFi password. Omit to prompt securely; use an empty string for open networks.",
+    )
+
+    wifi_token_parser = subparsers.add_parser(
+        "wifi-generate-token",
+        help="Generate and verify a WiFi token with device approval",
+    )
+    wifi_token_parser.add_argument(
+        "--endpoint",
+        help="Device endpoint as host:port. Omit to discover EP01 devices over mDNS.",
+    )
+    wifi_token_parser.add_argument(
+        "--timeout-ms",
+        type=int,
+        default=800,
+        help="mDNS discovery timeout in milliseconds (default: 800)",
+    )
+    wifi_token_parser.add_argument(
+        "--verify-attempts",
+        type=int,
+        default=8,
+        help="WiFi token verification attempts (default: 8)",
+    )
+    wifi_token_parser.add_argument(
+        "--verify-retry-ms",
+        type=int,
+        default=500,
+        help="Delay between token verification attempts in milliseconds (default: 500)",
+    )
+    wifi_token_parser.add_argument(
+        "--token-store",
+        help="Token store path. Defaults to the standard Enody token store.",
+    )
+    wifi_token_parser.add_argument(
+        "--no-save",
+        action="store_true",
+        help="Print verification result without saving the generated token.",
+    )
 
     dl_parser = subparsers.add_parser(
         "download-spectral-data",
@@ -296,6 +515,10 @@ def main():
         "list": cmd_list,
         "info": cmd_info,
         "monitor": cmd_monitor,
+        "wifi-scan": cmd_wifi_scan,
+        "wifi-join": cmd_wifi_join,
+        "wifi-setup": cmd_wifi_setup,
+        "wifi-generate-token": cmd_wifi_generate_token,
         "download-spectral-data": cmd_download_spectral_data,
         "update": cmd_update,
     }

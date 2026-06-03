@@ -2,7 +2,7 @@
 
 Python SDK for [Enody Lighting](https://enody.lighting) spectrally tunable fixtures.
 
-`enody` provides device discovery and control over USB, spectral data access, colorimetric calculations, and GPU-accelerated spectral optimization via [tinygrad](https://github.com/tinygrad/tinygrad). It wraps the [enody-rs](https://github.com/enodylighting/enody-rs) Rust core through native PyO3 bindings.
+`enody` provides device discovery and control over USB and WiFi, spectral data access, colorimetric calculations, and GPU-accelerated spectral optimization via [tinygrad](https://github.com/tinygrad/tinygrad). It wraps the [enody-rs](https://github.com/enodylighting/enody-rs) Rust core through native PyO3 bindings.
 
 ## Updating an EP01
 
@@ -24,6 +24,9 @@ Other useful commands:
 ```bash
 enody list                    # List connected devices
 enody info                    # Show device details (fixtures, sources, emitters)
+enody wifi-scan               # Scan WiFi networks through a USB-attached device
+enody wifi-setup              # Join WiFi and save a USB-authenticated token
+enody wifi-generate-token     # Generate and verify a WiFi token over WiFi
 enody download-spectral-data  # Save emitter spectral data to JSON
 ```
 
@@ -75,6 +78,58 @@ fixture = host.fixtures()[0]
 sources = fixture.sources()
 ```
 
+### Set up WiFi
+
+WiFi setup starts from a USB-attached EP01. The host scans nearby networks,
+joins the selected SSID, then a token can be generated and stored for later
+WiFi discovery.
+
+```python
+import enody
+
+usb = enody.UsbEnvironment()
+runtime = usb.runtimes()[0]
+host = runtime.host()
+
+for network in host.wifi_scan():
+    print(network.ssid(), network.rssi(), network.auth())
+
+host.wifi_join("Studio WiFi", "password")
+token = runtime.generate_token()
+enody.TokenStore.save_token(token)
+```
+
+### Pair and authorize over WiFi
+
+For integrations such as Home Assistant, use the WiFi pairing flow. It discovers
+EP01 devices over mDNS, waits for physical approval on the device, verifies the
+token by reconnecting over WiFi, and returns a `Token` that can be stored by the
+integration.
+
+```python
+import enody
+
+token = enody.generate_wifi_token(
+    on_approval=lambda instruction: print("Approval required:", instruction),
+    save=False,
+)
+
+runtime = enody.WifiConnection.runtime_from_endpoint(token, "192.168.1.50:8788")
+runtime.connect()
+host = runtime.host()
+print(host.identifier())
+runtime.disconnect()
+```
+
+Saved tokens can be loaded through the token store and used for WiFi discovery:
+
+```python
+tokens = enody.TokenStore.load().tokens()
+wifi = enody.WifiEnvironment(tokens)
+for runtime in wifi.runtimes():
+    print(runtime.host().identifier())
+```
+
 ### Control emitters directly
 
 ```python
@@ -111,7 +166,7 @@ emitter = enody.data.sample_emitter()   # First emitter from source
 
 ## Architecture
 
-Enody is a federated system where Runtimes communicate via message passing. An **Environment** is the entry point for device discovery and resource access — it owns connections to remote Runtimes and exposes the resources they contain. Discovery environments (`UsbEnvironment`) actively scan for devices, while user-defined environments allow manual organization of resources.
+Enody is a federated system where Runtimes communicate via message passing. An **Environment** is the entry point for device discovery and resource access — it owns connections to remote Runtimes and exposes the resources they contain. Discovery environments (`UsbEnvironment`, `WifiEnvironment`) actively scan for devices, while user-defined environments allow manual organization of resources.
 
 Fixtures are addressed by identifier, independent of which Host owns them. Commands route through the Enody device network with hop-aware routing, enabling location transparency and multi-hop delivery.
 
@@ -246,6 +301,12 @@ Pure Python color science types with `colour-science` integration:
 | `SpectralSample(wavelength, measurement)` | Single wavelength/measurement pair |
 | `SpectralData` | Collection of spectral samples |
 | `Chromaticity(x, y)` | CIE chromaticity coordinate |
+| `Token(host_id, key_id, data)` | WiFi authorization token |
+| `TokenStore` | Load, save, and upsert stored WiFi tokens |
+| `WifiEnvironment(tokens)` | Discover authenticated devices over WiFi |
+| `WifiConnection` | mDNS discovery, pairing, and direct WiFi runtime helpers |
+| `WifiNetwork` | WiFi scan result |
+| `WifiDiscoveredDevice` | mDNS-discovered EP01 metadata |
 
 ## JSON data format
 
