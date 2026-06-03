@@ -15,11 +15,24 @@ from .colorimetry import (
 )
 
 from .interface import (
+    DiscoveredRuntimes,
     Emitter,
+    EnvironmentRuntimeEvent,
     Fixture,
     Source,
+    Token,
+    TokenStore,
     UpdateTarget,
-    UsbEnvironment
+    UsbEnvironment,
+    WifiConnection,
+    WifiDiscoveredDevice,
+    WifiEnvironment,
+    WifiNetwork,
+    discover_runtimes,
+    generate_wifi_token,
+    verify_wifi_token_from_discovered_device,
+    verify_wifi_token_from_endpoint,
+    verify_wifi_token_from_runtime
 )
 
 from . import data
