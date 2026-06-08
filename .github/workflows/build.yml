@@ -1,66 +1,151 @@
 name: Build & Publish
 
 on:
-  push:
   pull_request:
+    branches:
+      - main
+      - dev
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  push:
+    branches:
+      - main
+      - dev
+    tags:
+      - "v*"
 
+# Default to least privilege. Jobs opt in only to what they need.
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Do not cancel release-tag runs halfway through publishing.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  MATURIN_VERSION: v1.13.3
+
 jobs:
   # ──────────────────────────────────────────────────────────────────────
-  # Non-main branches: quick Linux-only sanity build, no artifacts
+  # PRs and dev branch: quick Linux-only sanity build.
+  # No artifacts. No secrets. No OIDC.
   # ──────────────────────────────────────────────────────────────────────
   test:
-    if: github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    name: Test build
+    if: >-
+      ${{
+        github.event_name == 'pull_request' ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+      }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
+          persist-credentials: false
 
       - name: Install system dependencies
         run: |
+          set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y pkg-config libusb-1.0-0-dev libudev-dev
+          sudo apt-get install -y --no-install-recommends             pkg-config             libusb-1.0-0-dev             libudev-dev
 
-      - uses: PyO3/maturin-action@v1
+      - name: Build local wheel
+        uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release
-          sccache: true
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          args: --release --locked --compatibility pypi
+          sccache: false
 
   # ──────────────────────────────────────────────────────────────────────
-  # main & tags: full cross-platform wheel builds
+  # main and release tags: full cross-platform wheel builds.
+  # Artifacts are produced only from trusted pushes, not pull requests.
   # ──────────────────────────────────────────────────────────────────────
   wheels:
-    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    name: Build wheels (${{ matrix.target }})
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        (
+          github.ref == 'refs/heads/main' ||
+          github.ref == 'refs/heads/dev' ||
+          startsWith(github.ref, 'refs/tags/v')
+        )
+      }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+
     strategy:
       fail-fast: false
       matrix:
         include:
-          # ── Linux glibc (manylinux) ──
-          - { os: ubuntu-latest,      target: x86_64-unknown-linux-gnu,  manylinux: manylinux_2_34 }
-          - { os: ubuntu-24.04-arm,   target: aarch64-unknown-linux-gnu, manylinux: manylinux_2_34 }
-          # ── macOS ──
-          - { os: macos-15-intel, target: x86_64-apple-darwin }
-          - { os: macos-15,       target: aarch64-apple-darwin }
-          # ── Windows ──
-          - { os: windows-latest, target: x86_64-pc-windows-msvc }
-          - { os: windows-11-arm, target: aarch64-pc-windows-msvc }
+          # Linux glibc / manylinux
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            manylinux: manylinux_2_34
+            musllinux: false
+
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            manylinux: manylinux_2_34
+            musllinux: false
+
+          # Linux musl / musllinux for Alpine-based Home Assistant runtimes.
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            manylinux: musllinux_1_2
+            musllinux: true
+            musl_cc: x86_64-linux-musl-gcc
+            musl_ar: x86_64-linux-musl-ar
+            target_env: X86_64_UNKNOWN_LINUX_MUSL
+
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            manylinux: musllinux_1_2
+            musllinux: true
+            musl_cc: aarch64-linux-musl-gcc
+            musl_ar: aarch64-linux-musl-ar
+            target_env: AARCH64_UNKNOWN_LINUX_MUSL
+
+          # macOS
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            musllinux: false
+
+          - os: macos-15
+            target: aarch64-apple-darwin
+            musllinux: false
+
+          # Windows
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            musllinux: false
+
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            musllinux: false
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
+          persist-credentials: false
 
-      # Set up Python interpreters for macOS / Windows native builds.
-      # Linux builds run inside manylinux containers which ship their own.
-      - uses: actions/setup-python@v5
+      # Linux builds run inside manylinux containers, which ship their own Python interpreters.
+      - name: Set up Python interpreters
+        uses: actions/setup-python@v5
         if: runner.os != 'Linux' && matrix.target != 'aarch64-pc-windows-msvc'
         with:
           python-version: |
@@ -69,84 +154,356 @@ jobs:
             3.11
             3.12
             3.13
-      # ARM64 Windows Python only exists from 3.11+
-      - uses: actions/setup-python@v5
+            3.14
+
+      # ARM64 Windows Python is only available from 3.11+.
+      - name: Set up Python interpreters for Windows ARM64
+        uses: actions/setup-python@v5
         if: matrix.target == 'aarch64-pc-windows-msvc'
         with:
           python-version: |
             3.11
             3.12
             3.13
+            3.14
 
-      # macOS needs libusb for the rusb crate
-      - name: Install system dependencies (macOS)
+      - name: Install system dependencies on macOS
         if: runner.os == 'macOS'
-        run: brew install libusb
+        run: |
+          set -euxo pipefail
+          brew install libusb
 
-      - uses: PyO3/maturin-action@v1
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
-          sccache: true
+          maturin-version: ${{ env.MATURIN_VERSION }}
+          args: >-
+            --release --locked --out dist
+            ${{ matrix.musllinux && '--features pyo3/extension-module,pyo3/abi3-py38' || '--compatibility pypi --find-interpreter' }}
+          sccache: false
           manylinux: ${{ matrix.manylinux || 'auto' }}
-          # Inside manylinux/musllinux containers, install native libs before
-          # the Rust build starts.
           before-script-linux: |
-            if command -v apk &>/dev/null; then
+            set -euxo pipefail
+            if [ "${{ matrix.musllinux }}" = "true" ]; then
+              musl_cc=""
+              for candidate in "${{ matrix.musl_cc }}" "${{ matrix.target }}-gcc" musl-gcc; do
+                if command -v "$candidate" >/dev/null 2>&1; then
+                  musl_cc="$candidate"
+                  break
+                fi
+              done
+              if [ -z "$musl_cc" ]; then
+                echo "::error::Could not find a musl C compiler for ${{ matrix.target }}"
+                exit 1
+              fi
+
+              target_env_lower="$(printf '%s' '${{ matrix.target }}' | tr '-' '_')"
+              export "CC_${{ matrix.target_env }}=${musl_cc}"
+              export "CC_${target_env_lower}=${musl_cc}"
+              export "CARGO_TARGET_${{ matrix.target_env }}_LINKER=${musl_cc}"
+
+              for candidate in "${{ matrix.musl_ar }}" "${musl_cc%-gcc}-ar" ar; do
+                if command -v "$candidate" >/dev/null 2>&1; then
+                  export "AR_${{ matrix.target_env }}=${candidate}"
+                  export "AR_${target_env_lower}=${candidate}"
+                  break
+                fi
+              done
+
+              "$musl_cc" -dumpmachine
+
+              if command -v apk >/dev/null 2>&1; then
+                apk add --no-cache linux-headers pkgconf
+              elif command -v yum >/dev/null 2>&1; then
+                yum install -y pkgconfig
+              elif command -v apt-get >/dev/null 2>&1; then
+                apt-get update
+                apt-get install -y --no-install-recommends pkg-config
+              fi
+            elif command -v apk >/dev/null 2>&1; then
               apk add --no-cache libusb-dev eudev-dev linux-headers pkgconf
-            elif command -v yum &>/dev/null; then
+            elif command -v yum >/dev/null 2>&1; then
               yum install -y libusb1-devel systemd-devel pkgconfig
-            elif command -v apt-get &>/dev/null; then
-              apt-get update && apt-get install -y libusb-1.0-0-dev libudev-dev pkg-config
+            elif command -v apt-get >/dev/null 2>&1; then
+              apt-get update
+              apt-get install -y --no-install-recommends libusb-1.0-0-dev libudev-dev pkg-config
             fi
 
-      - uses: actions/upload-artifact@v4
+      - name: Validate musllinux wheel platform tags
+        if: ${{ matrix.musllinux }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          case "${{ matrix.target }}" in
+            x86_64-unknown-linux-musl)
+              platform_tag="musllinux_1_2_x86_64"
+              ;;
+            aarch64-unknown-linux-musl)
+              platform_tag="musllinux_1_2_aarch64"
+              ;;
+            *)
+              exit 0
+              ;;
+          esac
+
+          # PyO3 ABI3 wheels are accepted by CPython 3.8+,
+          # including Home Assistant's CPython 3.14 musl runtime.
+          wheels=(dist/*-cp38-abi3-"${platform_tag}".whl)
+          if [ "${#wheels[@]}" -eq 0 ]; then
+            echo "::error::No cp38-abi3 wheel found for platform tag ${platform_tag}"
+            ls -lah dist || true
+            exit 1
+          fi
+
+          printf 'Validated musllinux ABI3 wheel: %s\n' "${wheels[@]}"
+
+      - name: Audit musllinux wheels for glibc linkage
+        if: ${{ matrix.musllinux }}
+        run: |
+          set -euo pipefail
+
+          case "${{ matrix.target }}" in
+            *-linux-musl) ;;
+            *) exit 0 ;;
+          esac
+
+          python - <<'PY'
+          import re
+          import shutil
+          import subprocess
+          import tempfile
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = sorted(Path("dist").glob("*musllinux*.whl"))
+          if not wheels:
+              raise SystemExit("No musllinux wheels found to audit")
+
+          readelf = shutil.which("readelf")
+
+          def print_readelf_output(wheel, name, dynamic, versions):
+              print(f"::group::{wheel.name}: {name} ELF audit")
+              print("$ readelf -d")
+              print(dynamic.stdout or dynamic.stderr or "<no output>")
+              print("$ readelf --version-info")
+              print(versions.stdout or versions.stderr or "<no output>")
+              print("::endgroup::")
+
+          def is_glibc_runtime_library(name):
+              glibc_names = {
+                  "libc.so.6",
+                  "libpthread.so.0",
+                  "libdl.so.2",
+                  "libm.so.6",
+                  "librt.so.1",
+                  "libresolv.so.2",
+                  "libnsl.so.1",
+                  "libutil.so.1",
+              }
+              return name in glibc_names or name.startswith("ld-linux")
+
+          with tempfile.TemporaryDirectory() as tmp:
+              tmp_path = Path(tmp)
+
+              for wheel in wheels:
+                  with ZipFile(wheel) as archive:
+                      shared_objects = [
+                          name for name in archive.namelist()
+                          if name.endswith((".so", ".pyd", ".dylib"))
+                          or ".so." in Path(name).name
+                      ]
+                      if not shared_objects:
+                          raise SystemExit(f"{wheel.name}: no shared object found")
+
+                      for name in shared_objects:
+                          out_path = tmp_path / wheel.name / name
+                          out_path.parent.mkdir(parents=True, exist_ok=True)
+                          out_path.write_bytes(archive.read(name))
+
+                          if readelf:
+                              dynamic = subprocess.run(
+                                  [readelf, "-d", str(out_path)],
+                                  check=False,
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE,
+                                  text=True,
+                              )
+                              needed = re.findall(
+                                  r"\(NEEDED\)\s+Shared library: \[([^\]]+)\]",
+                                  dynamic.stdout,
+                              )
+                              glibc_needed = [
+                                  lib for lib in needed if is_glibc_runtime_library(lib)
+                              ]
+                              if dynamic.returncode == 0 and glibc_needed:
+                                  versions = subprocess.run(
+                                      [readelf, "--version-info", str(out_path)],
+                                      check=False,
+                                      stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE,
+                                      text=True,
+                                  )
+                                  print_readelf_output(wheel, name, dynamic, versions)
+                                  raise SystemExit(
+                                      f"{wheel.name}: {name} needs glibc libraries: {glibc_needed}"
+                                  )
+
+                              versions = subprocess.run(
+                                  [readelf, "--version-info", str(out_path)],
+                                  check=False,
+                                  stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE,
+                                  text=True,
+                              )
+                              version_providers = re.findall(
+                                  r"File: (\S+)",
+                                  versions.stdout,
+                              )
+                              glibc_version_providers = [
+                                  lib
+                                  for lib in version_providers
+                                  if is_glibc_runtime_library(lib)
+                              ]
+                              if versions.returncode == 0 and glibc_version_providers:
+                                  print_readelf_output(wheel, name, dynamic, versions)
+                                  raise SystemExit(
+                                      f"{wheel.name}: {name} has glibc version providers: {glibc_version_providers}"
+                                  )
+                          elif b"libc.so.6" in out_path.read_bytes():
+                              raise SystemExit(
+                                  f"{wheel.name}: {name} appears to reference glibc"
+                              )
+
+                  print(f"{wheel.name}: no glibc dynamic dependency detected")
+          PY
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.target }}
-          path: dist/
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 2
 
   # ──────────────────────────────────────────────────────────────────────
-  # Source distribution
+  # Source distribution for main and release tags.
   # ──────────────────────────────────────────────────────────────────────
   sdist:
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    name: Build sdist
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        (
+          github.ref == 'refs/heads/main' ||
+          startsWith(github.ref, 'refs/tags/v')
+        )
+      }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
+          persist-credentials: false
 
-      - uses: PyO3/maturin-action@v1
+      - name: Build source distribution
+        uses: PyO3/maturin-action@v1
         with:
           command: sdist
+          maturin-version: ${{ env.MATURIN_VERSION }}
           args: --out dist
+          sccache: false
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
         with:
           name: sdist
           path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 2
 
   # ──────────────────────────────────────────────────────────────────────
-  # Publish to PyPI + GitHub Release (semver tags only)
+  # PyPI release.
+  #
+  # Uses PyPI Trusted Publishing, not PYPI_TOKEN / long-lived secrets.
+  # Configure PyPI with:
+  #   Owner: enodylighting
+  #   Repository: enody-py
+  #   Workflow: this file's basename
+  #   Environment: release
   # ──────────────────────────────────────────────────────────────────────
   publish:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [wheels, sdist]
-    runs-on: ubuntu-latest
+    name: Publish to PyPI
+    if: >-
+      ${{
+        github.event_name == 'push' &&
+        startsWith(github.ref, 'refs/tags/v')
+      }}
+    needs:
+      - wheels
+      - sdist
+    runs-on: ubuntu-24.04
+
+    environment:
+      name: release
+      url: https://pypi.org/p/enody
+
     permissions:
-      id-token: write   # PyPI trusted publishing
-      contents: write   # GitHub release uploads
-    environment: release
+      contents: read
+      id-token: write
+
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Validate release tag
+        run: |
+          set -euo pipefail
+          case "${GITHUB_REF_NAME}" in
+            v[0-9]*.[0-9]*.[0-9]*)
+              ;;
+            *)
+              echo "::error::Release tag must look like vX.Y.Z or vX.Y.Z-suffix. Got: ${GITHUB_REF_NAME}"
+              exit 1
+              ;;
+          esac
+
+      - name: Download wheel and sdist artifacts
+        uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
-      - name: Publish to PyPI
-        uses: PyO3/maturin-action@v1
+      - name: Validate distribution directory
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          files=(dist/*)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::No distributions found in dist/"
+            exit 1
+          fi
+
+          unexpected=()
+          for f in "${files[@]}"; do
+            case "$f" in
+              *.whl|*.tar.gz) ;;
+              *) unexpected+=("$f") ;;
+            esac
+          done
+
+          if [ "${#unexpected[@]}" -ne 0 ]; then
+            printf '::error::Unexpected artifact in dist/: %s\n' "${unexpected[@]}"
+            exit 1
+          fi
+
+          ls -lah dist
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          command: upload
-          args: --non-interactive --skip-existing dist/*
-        env:
-          MATURIN_PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+          packages-dir: dist
+          attestations: true
