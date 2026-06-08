@@ -1033,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "enody"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "async-trait",
  "clap",
@@ -1051,8 +1051,10 @@ dependencies = [
  "serialport",
  "sha2",
  "snow",
+ "socket2",
  "tokio",
  "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
