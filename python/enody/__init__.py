@@ -1,7 +1,3 @@
-import warnings
-
-warnings.filterwarnings("ignore", module=r"colour\.utilities\.verbose")
-
 from ._enody_rs import (
     Configuration,
     Flux,

@@ -1,5 +1,3 @@
-from colour import SpectralDistribution
-
 from ._enody_rs import Chromaticity, SpectralSample
 
 class XYZ:
@@ -46,6 +44,8 @@ class SpectralData:
         return [sample.measurement for sample in self._samples]
 
     def spectral_distribution(self):
+        from colour import SpectralDistribution
+
         data = {}
         for sample in self._samples:
             data[round(sample.wavelength)] = sample.measurement

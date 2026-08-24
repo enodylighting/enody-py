@@ -1,5 +1,3 @@
-from colour.plotting import plot_multi_sds, plot_sds_in_chromaticity_diagram_CIE1931
-import matplotlib.pyplot as plt
 import time
 
 from . import colorimetry, _enody_rs
@@ -628,6 +626,8 @@ class Source:
         return Tensor(emitter_values, dtype=dtypes.float32)
 
     def _plot(self, plot_fn, display=True, output=None):
+        import matplotlib.pyplot as plt
+
         plot_fn(self._emitter_spectral_distributions(), show=False)
         fig = plt.gcf()
         fig.set_size_inches(1920 / 100, 1080 / 100)
@@ -639,9 +639,13 @@ class Source:
         plt.close(fig)
 
     def plot_emitter_spectral_distributions(self, display=True, output=None):
+        from colour.plotting import plot_multi_sds
+
         self._plot(plot_multi_sds, display=display, output=output)
 
     def plot_emitter_chromaticity_diagram(self, display=True, output=None):
+        from colour.plotting import plot_sds_in_chromaticity_diagram_CIE1931
+
         self._plot(plot_sds_in_chromaticity_diagram_CIE1931, display=display, output=output)
 
     def display(self, config, flux):
