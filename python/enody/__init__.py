@@ -1,6 +1,7 @@
 from ._enody_rs import (
     Configuration,
     Flux,
+    Transition,
     init_logging
 )
 

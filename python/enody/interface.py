@@ -588,6 +588,12 @@ class Fixture:
             raise RuntimeError("display requires a device-backed fixture")
         return self._remote_fixture.display(config, flux)
 
+    def transition(self, transition):
+        """Run a device-side transition. Requires a device-backed fixture."""
+        if self._remote_fixture is None:
+            raise RuntimeError("transition requires a device-backed fixture")
+        return self._remote_fixture.transition(transition)
+
 class Source:
     @classmethod
     def from_json(cls, json_data):
@@ -653,6 +659,12 @@ class Source:
         if self._remote_source is None:
             raise RuntimeError("display requires a device-backed source")
         return self._remote_source.display(config, flux)
+
+    def transition(self, transition):
+        """Run a device-side transition. Requires a device-backed source."""
+        if self._remote_source is None:
+            raise RuntimeError("transition requires a device-backed source")
+        return self._remote_source.transition(transition)
 
 class Emitter:
     @classmethod

@@ -74,6 +74,10 @@ Configuration
   Configuration.flux()
   Configuration.spectral()
 
+Transition
+  Transition.linear(config, flux, duration_seconds) → Transition
+  .configuration, .flux, .duration
+
 UsbEnvironment()                       # Not thread-safe
   .runtimes() → list[Runtime]
   .start_discovery(), .stop_discovery()
@@ -144,6 +148,7 @@ Source
   .emitters() → list[Emitter]
   .tensor() → Tensor              # shape: (n_emitters, 401)
   .display(config, flux)           # device-backed only
+  .transition(transition)          # device-backed only; returns final (config, flux)
   .plot_emitter_spectral_distributions()
   .plot_emitter_chromaticity_diagram()
 
@@ -154,6 +159,7 @@ Fixture
   .sources() → list[Source]
   .tensor() → Tensor              # shape: (n_sources, n_emitters, 401)
   .display(config, flux)           # device-backed only
+  .transition(transition)          # device-backed only; returns final (config, flux)
 
 ## WiFi authorization flow
 
