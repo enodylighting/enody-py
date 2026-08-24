@@ -4,6 +4,9 @@ Python SDK for [Enody Lighting](https://enody.lighting) spectrally tunable fixtu
 
 `enody` provides device discovery and control over USB and WiFi, spectral data access, colorimetric calculations, and GPU-accelerated spectral optimization via [tinygrad](https://github.com/tinygrad/tinygrad). It wraps the [enody-rs](https://github.com/enodylighting/enody-rs) Rust core through native PyO3 bindings.
 
+The base install contains the device SDK without the optional science and
+plotting stack. Install those features with `enody[science]`.
+
 ## Updating an EP01
 
 Install the package, connect your EP01 over USB, and run:
@@ -38,6 +41,12 @@ Requires Python >= 3.8.
 pip install enody
 ```
 
+For spectral conversion, plotting, and tensor optimization:
+
+```bash
+pip install "enody[science]"
+```
+
 ### System dependencies
 
 USB device access requires [libusb](https://libusb.info/):
@@ -58,6 +67,7 @@ Requires [maturin](https://www.maturin.rs/) and a Rust toolchain:
 ```bash
 pip install maturin
 maturin develop
+pip install -e ".[dev,science]"
 ```
 
 ## Quick start
@@ -342,9 +352,14 @@ Response data (`response.json`) uses the same sample list format:
 
 ## Dependencies
 
+The base package bundles the [enody-rs](https://github.com/enodylighting/enody-rs)
+Rust core through PyO3 and has no mandatory Python dependencies.
+
+The optional `science` extra adds:
+
 - [tinygrad](https://github.com/tinygrad/tinygrad) — tensor operations and automatic differentiation
-- [colour-science](https://www.colour-science.org/) — color science computations and plotting
-- [enody-rs](https://github.com/enodylighting/enody-rs) — Rust core SDK (compiled via PyO3)
+- [colour-science](https://www.colour-science.org/) — color science computations
+- [Matplotlib](https://matplotlib.org/) — plotting
 
 ## License
 
