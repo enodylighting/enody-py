@@ -688,7 +688,7 @@ class Emitter:
 
     def tensor(self):
         from tinygrad.tensor import Tensor, dtypes
-        return Tensor(self.spectral_data().values(), dtype=dtypes.float32)
+        return Tensor(self.spectral_data().measurements(), dtype=dtypes.float32)
 
     def set_flux(self, flux):
         """Set flux on the device. Requires a device-backed emitter."""
