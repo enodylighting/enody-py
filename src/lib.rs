@@ -238,6 +238,81 @@ impl PyConfiguration {
 }
 
 // ---------------------------------------------------------------------------
+// Transition
+// ---------------------------------------------------------------------------
+
+#[pyclass(name = "Transition")]
+#[derive(Clone)]
+pub struct PyTransition {
+    configuration: enody::message::Configuration,
+    flux: enody::message::Flux,
+    method: enody::message::TransitionMethod,
+}
+
+impl PyTransition {
+    fn fixture_transition(&self) -> enody::message::Transition<enody::message::FixtureState> {
+        enody::message::Transition {
+            target: enody::message::FixtureState::new(
+                self.configuration.clone(),
+                self.flux.clone(),
+            ),
+            method: self.method.clone(),
+        }
+    }
+
+    fn source_transition(&self) -> enody::message::Transition<enody::message::SourceState> {
+        enody::message::Transition {
+            target: enody::message::SourceState::new(self.configuration.clone(), self.flux.clone()),
+            method: self.method.clone(),
+        }
+    }
+}
+
+#[pymethods]
+impl PyTransition {
+    #[staticmethod]
+    fn linear(configuration: &PyConfiguration, flux: &PyFlux, duration: f64) -> PyResult<Self> {
+        let duration = Duration::try_from_secs_f64(duration).map_err(|_| {
+            argument_err("duration must be a finite, non-negative number of seconds")
+        })?;
+
+        Ok(Self {
+            configuration: configuration.inner.clone(),
+            flux: flux.inner.clone(),
+            method: enody::message::TransitionMethod::Linear(duration),
+        })
+    }
+
+    #[getter]
+    fn configuration(&self) -> PyConfiguration {
+        PyConfiguration {
+            inner: self.configuration.clone(),
+        }
+    }
+
+    #[getter]
+    fn flux(&self) -> PyFlux {
+        PyFlux {
+            inner: self.flux.clone(),
+        }
+    }
+
+    #[getter]
+    fn duration(&self) -> f64 {
+        self.method.duration().as_secs_f64()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Transition.linear({:?}, {:?}, {})",
+            self.configuration,
+            self.flux,
+            self.method.duration().as_secs_f64()
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Token
 // ---------------------------------------------------------------------------
 
@@ -632,6 +707,19 @@ impl PyFixture {
             .map_err(enody_err)?;
         Ok((PyConfiguration { inner: cfg }, PyFlux { inner: f }))
     }
+
+    fn transition(&self, transition: &PyTransition) -> PyResult<(PyConfiguration, PyFlux)> {
+        let rt = get_or_init_runtime();
+        let state = rt
+            .block_on(self.inner.transition(transition.fixture_transition()))
+            .map_err(enody_err)?;
+        Ok((
+            PyConfiguration {
+                inner: state.configuration,
+            },
+            PyFlux { inner: state.flux },
+        ))
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -668,6 +756,19 @@ impl PySource {
             .block_on(self.inner.display(config.inner.clone(), flux.inner.clone()))
             .map_err(enody_err)?;
         Ok((PyConfiguration { inner: cfg }, PyFlux { inner: f }))
+    }
+
+    fn transition(&self, transition: &PyTransition) -> PyResult<(PyConfiguration, PyFlux)> {
+        let rt = get_or_init_runtime();
+        let state = rt
+            .block_on(self.inner.transition(transition.source_transition()))
+            .map_err(enody_err)?;
+        Ok((
+            PyConfiguration {
+                inner: state.configuration,
+            },
+            PyFlux { inner: state.flux },
+        ))
     }
 }
 
@@ -1051,6 +1152,7 @@ fn _enody_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyChromaticity>()?;
     m.add_class::<PyFlux>()?;
     m.add_class::<PyConfiguration>()?;
+    m.add_class::<PyTransition>()?;
     m.add_class::<PyToken>()?;
     m.add_class::<PyTokenStore>()?;
     m.add_class::<PyWifiNetwork>()?;

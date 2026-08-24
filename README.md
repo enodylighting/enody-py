@@ -162,6 +162,28 @@ fixture.display(Configuration.blackbody(2700), Flux.relative(1.0))
 fixture.display(Configuration.chromatic(0.3127, 0.3290), Flux.relative(0.8))
 ```
 
+### Run device-side transitions
+
+Fixtures and sources can transition to a target configuration and flux after a
+single command. The call waits for the transition to finish and returns its
+final `(Configuration, Flux)` state, which can differ from the target if the
+transition is interrupted.
+
+```python
+from enody import Configuration, Flux, Transition
+
+final_config, final_flux = fixture.transition(
+    Transition.linear(
+        Configuration.blackbody(2700),
+        Flux.relative(0.4),
+        2.0,
+    )
+)
+```
+
+Transitions are available on fixtures and sources. Emitter control remains
+explicit through `Emitter.set_flux()`.
+
 ### Work offline with sample data
 
 No device required — use bundled spectral data for algorithm development:
@@ -308,6 +330,7 @@ Pure Python color science types with `colour-science` integration:
 | `Configuration.manual()` | Manual per-emitter control |
 | `Configuration.flux()` | Flux-only control mode |
 | `Configuration.spectral()` | Spectral control mode |
+| `Transition.linear(configuration, flux, duration)` | Device-side linear transition in seconds |
 | `SpectralSample(wavelength, measurement)` | Single wavelength/measurement pair |
 | `SpectralData` | Collection of spectral samples |
 | `Chromaticity(x, y)` | CIE chromaticity coordinate |
