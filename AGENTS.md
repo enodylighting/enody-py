@@ -1,4 +1,17 @@
-# enody Python SDK
+# Repository Instructions
+
+## Public repositories
+
+- Never push commits, branches, tags, or releases to a public Git remote unless
+  the user explicitly authorizes that specific push in the current request.
+- A request to prepare, package, or publish a release does not itself authorize
+  pushing source-control refs. Prepare a local branch and let the user review it
+  unless they separately approve the public remote and refs to push.
+- State the public repository, remote, and refs before requesting permission.
+- Never delete, force-push, or rewrite public refs without separate explicit
+  permission.
+
+## SDK overview
 
 > Python SDK for Enody Lighting spectrally tunable fixtures. Provides USB and WiFi device control, WiFi pairing/token authorization, spectral data access, colorimetry, and GPU-accelerated spectral optimization.
 
@@ -8,7 +21,7 @@ Enody is a federated system where Runtimes communicate via message passing. An E
 
 enody_python wraps the enody-rs Rust core library via PyO3 bindings. The native extension lives at `enody._enody_rs`. High-level Python interfaces, optimization, and colorimetry are pure Python on top.
 
-Build system: maturin. Dependencies: tinygrad (tensors/autodiff), colour-science (color science), enody-rs (Rust core via PyO3). WiFi support comes from enody-rs 0.2.x and includes mDNS discovery, Noise token pairing, token storage, and authenticated WiFi runtimes.
+Build system: maturin. The base package has no mandatory Python dependencies. The optional `science` extra contains tinygrad (tensors/autodiff), colour-science (color science), and Matplotlib (plotting). The enody-rs Rust core is compiled into the package through PyO3. WiFi support comes from enody-rs 0.2.x and includes mDNS discovery, Noise token pairing, token storage, and authenticated WiFi runtimes.
 
 ## Entity hierarchy
 
