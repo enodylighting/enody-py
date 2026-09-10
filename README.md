@@ -4,8 +4,13 @@ Python SDK for [Enody Lighting](https://enody.lighting) spectrally tunable fixtu
 
 `enody` provides device discovery and control over USB and WiFi, spectral data access, colorimetric calculations, and GPU-accelerated spectral optimization via [tinygrad](https://github.com/tinygrad/tinygrad). It wraps the [enody-rs](https://github.com/enodylighting/enody-rs) Rust core through native PyO3 bindings.
 
+This is largely implemented via LLM porting. All output is reviewed and thoroughly tested, but I am admittedly not a great Python developer and find its output as good as what I would write myself.
+
 The base install contains the device SDK without the optional science and
 plotting stack. Install those features with `enody[science]`.
+
+See [Native I/O and Python threads](docs/native-io.md) for GIL behavior, connection
+serialization, timeout limitations, and the real-extension regression tests.
 
 ## Updating an EP01
 
