@@ -1,10 +1,54 @@
 use pyo3::prelude::*;
 use pyo3::types::PyAny;
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, OnceLock, Weak},
+    time::Duration,
+};
 
 fn get_or_init_runtime() -> &'static tokio::runtime::Runtime {
     static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
     RT.get_or_init(|| tokio::runtime::Runtime::new().unwrap())
+}
+
+// All closures contain only native values. Python argument extraction and
+// result wrapping stay on the GIL side of this boundary.
+fn run_native<T: Send>(py: Python<'_>, operation: impl FnOnce() -> T + Send) -> T {
+    py.allow_threads(operation)
+}
+
+// The upstream transport was previously serialized by the GIL. Retain that
+// ordering per native connection, including its child handles, without blocking
+// Python or other connections. Admission is intentionally not deadline-bound.
+type DeviceGate = Arc<Mutex<()>>;
+
+fn device_gate(runtime: &enody::runtime::remote::RemoteRuntime) -> DeviceGate {
+    static GATES: OnceLock<Mutex<HashMap<usize, Weak<Mutex<()>>>>> = OnceLock::new();
+    // Cloned runtimes expose the same Arc connection. Key by allocation identity,
+    // not host UUID: two independent connections to one host must not share a gate.
+    let connection = runtime.connection();
+    let key = Arc::as_ptr(&connection) as *const () as usize;
+    let mut gates = GATES.get_or_init(Mutex::default).lock().unwrap();
+    gates.retain(|_, gate| gate.strong_count() != 0);
+    if let Some(gate) = gates.get(&key).and_then(Weak::upgrade) {
+        return gate;
+    }
+    let gate = Arc::new(Mutex::new(()));
+    gates.insert(key, Arc::downgrade(&gate));
+    gate
+}
+
+fn run_device<T: Send>(
+    py: Python<'_>,
+    gate: &Mutex<()>,
+    operation: impl FnOnce() -> Result<T, enody::Error> + Send,
+) -> Result<T, enody::Error> {
+    run_native(py, move || {
+        let _guard = gate.lock().map_err(|_| {
+            enody::Error::Debug("device operation lock poisoned by a native panic".into())
+        })?;
+        operation()
+    })
 }
 
 fn enody_err(e: enody::Error) -> PyErr {
@@ -521,12 +565,12 @@ fn environment_runtime_event(
         enody::environment::EnvironmentRuntimeEvent::Arrived(runtime) => {
             PyEnvironmentRuntimeEvent {
                 kind: "arrived".to_string(),
-                runtime: PyRuntime { inner: runtime },
+                runtime: PyRuntime::from_native(runtime),
             }
         }
         enody::environment::EnvironmentRuntimeEvent::Left(runtime) => PyEnvironmentRuntimeEvent {
             kind: "left".to_string(),
-            runtime: PyRuntime { inner: runtime },
+            runtime: PyRuntime::from_native(runtime),
         },
     }
 }
@@ -555,7 +599,7 @@ impl PyUsbEnvironment {
         self.inner
             .runtimes()
             .into_iter()
-            .map(|r| PyRuntime { inner: r })
+            .map(PyRuntime::from_native)
             .collect()
     }
 
@@ -589,24 +633,44 @@ impl PyUsbEnvironment {
 #[derive(Clone)]
 pub struct PyRuntime {
     inner: enody::runtime::remote::RemoteRuntime,
+    gate: DeviceGate,
+}
+
+impl PyRuntime {
+    fn from_native(inner: enody::runtime::remote::RemoteRuntime) -> Self {
+        let gate = device_gate(&inner);
+        Self { inner, gate }
+    }
 }
 
 #[pymethods]
 impl PyRuntime {
-    fn host(&self) -> PyResult<PyHost> {
-        let rt = get_or_init_runtime();
-        let host = rt.block_on(self.inner.host()).map_err(enody_err)?;
-        Ok(PyHost { inner: host })
+    fn host(&self, py: Python<'_>) -> PyResult<PyHost> {
+        let inner = self.inner.clone();
+        let host = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.host())
+        })
+        .map_err(enody_err)?;
+        Ok(PyHost {
+            inner: host,
+            gate: self.gate.clone(),
+        })
     }
 
-    fn connect(&self) -> PyResult<()> {
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.connect()).map_err(enody_err)
+    fn connect(&self, py: Python<'_>) -> PyResult<()> {
+        let inner = self.inner.clone();
+        run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.connect())
+        })
+        .map_err(enody_err)
     }
 
-    fn disconnect(&self) -> PyResult<()> {
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.disconnect()).map_err(enody_err)
+    fn disconnect(&self, py: Python<'_>) -> PyResult<()> {
+        let inner = self.inner.clone();
+        run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.disconnect())
+        })
+        .map_err(enody_err)
     }
 
     fn is_connected(&self) -> bool {
@@ -617,11 +681,12 @@ impl PyRuntime {
         self.inner.enable_logging();
     }
 
-    fn generate_token(&self) -> PyResult<PyToken> {
-        let rt = get_or_init_runtime();
-        let token = rt
-            .block_on(self.inner.generate_token())
-            .map_err(enody_err)?;
+    fn generate_token(&self, py: Python<'_>) -> PyResult<PyToken> {
+        let inner = self.inner.clone();
+        let token = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.generate_token())
+        })
+        .map_err(enody_err)?;
         Ok(PyToken { inner: token })
     }
 }
@@ -634,6 +699,7 @@ impl PyRuntime {
 #[derive(Clone)]
 pub struct PyHost {
     inner: enody::host::remote::RemoteHost,
+    gate: DeviceGate,
 }
 
 #[pymethods]
@@ -646,18 +712,27 @@ impl PyHost {
         self.inner.version().to_string()
     }
 
-    fn fixtures(&self) -> PyResult<Vec<PyFixture>> {
-        let rt = get_or_init_runtime();
-        let fixtures = rt.block_on(self.inner.fixtures()).map_err(enody_err)?;
+    fn fixtures(&self, py: Python<'_>) -> PyResult<Vec<PyFixture>> {
+        let inner = self.inner.clone();
+        let fixtures = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.fixtures())
+        })
+        .map_err(enody_err)?;
         Ok(fixtures
             .into_iter()
-            .map(|f| PyFixture { inner: f })
+            .map(|f| PyFixture {
+                inner: f,
+                gate: self.gate.clone(),
+            })
             .collect())
     }
 
-    fn wifi_scan(&self) -> PyResult<Vec<PyWifiNetwork>> {
-        let rt = get_or_init_runtime();
-        let networks = rt.block_on(self.inner.wifi_scan()).map_err(enody_err)?;
+    fn wifi_scan(&self, py: Python<'_>) -> PyResult<Vec<PyWifiNetwork>> {
+        let inner = self.inner.clone();
+        let networks = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.wifi_scan())
+        })
+        .map_err(enody_err)?;
         Ok(networks
             .into_iter()
             .map(|network| match network {
@@ -667,10 +742,14 @@ impl PyHost {
     }
 
     #[pyo3(signature = (ssid, password = ""))]
-    fn wifi_join(&self, ssid: &str, password: &str) -> PyResult<()> {
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.wifi_join(ssid, password))
-            .map_err(enody_err)
+    fn wifi_join(&self, py: Python<'_>, ssid: &str, password: &str) -> PyResult<()> {
+        let inner = self.inner.clone();
+        let ssid = ssid.to_owned();
+        let password = password.to_owned();
+        run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.wifi_join(&ssid, &password))
+        })
+        .map_err(enody_err)
     }
 }
 
@@ -682,6 +761,7 @@ impl PyHost {
 #[derive(Clone)]
 pub struct PyFixture {
     inner: enody::fixture::remote::RemoteFixture,
+    gate: DeviceGate,
 }
 
 #[pymethods]
@@ -690,29 +770,48 @@ impl PyFixture {
         self.inner.identifier().to_string()
     }
 
-    fn sources(&self) -> PyResult<Vec<PySource>> {
-        let rt = get_or_init_runtime();
-        let sources = rt.block_on(self.inner.sources()).map_err(enody_err)?;
-        Ok(sources.into_iter().map(|s| PySource { inner: s }).collect())
+    fn sources(&self, py: Python<'_>) -> PyResult<Vec<PySource>> {
+        let inner = self.inner.clone();
+        let sources = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.sources())
+        })
+        .map_err(enody_err)?;
+        Ok(sources
+            .into_iter()
+            .map(|s| PySource {
+                inner: Arc::new(s),
+                gate: self.gate.clone(),
+            })
+            .collect())
     }
 
     fn display(
         &self,
+        py: Python<'_>,
         config: &PyConfiguration,
         flux: &PyFlux,
     ) -> PyResult<(PyConfiguration, PyFlux)> {
-        let rt = get_or_init_runtime();
-        let (cfg, f) = rt
-            .block_on(self.inner.display(config.inner.clone(), flux.inner.clone()))
-            .map_err(enody_err)?;
+        let inner = self.inner.clone();
+        let config = config.inner.clone();
+        let flux = flux.inner.clone();
+        let (cfg, f) = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.display(config, flux))
+        })
+        .map_err(enody_err)?;
         Ok((PyConfiguration { inner: cfg }, PyFlux { inner: f }))
     }
 
-    fn transition(&self, transition: &PyTransition) -> PyResult<(PyConfiguration, PyFlux)> {
-        let rt = get_or_init_runtime();
-        let state = rt
-            .block_on(self.inner.transition(transition.fixture_transition()))
-            .map_err(enody_err)?;
+    fn transition(
+        &self,
+        py: Python<'_>,
+        transition: &PyTransition,
+    ) -> PyResult<(PyConfiguration, PyFlux)> {
+        let inner = self.inner.clone();
+        let transition = transition.fixture_transition();
+        let state = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.transition(transition))
+        })
+        .map_err(enody_err)?;
         Ok((
             PyConfiguration {
                 inner: state.configuration,
@@ -728,7 +827,8 @@ impl PyFixture {
 
 #[pyclass(name = "Source")]
 pub struct PySource {
-    inner: enody::source::remote::RemoteSource,
+    inner: Arc<enody::source::remote::RemoteSource>,
+    gate: DeviceGate,
 }
 
 #[pymethods]
@@ -737,32 +837,48 @@ impl PySource {
         self.inner.identifier().to_string()
     }
 
-    fn emitters(&self) -> PyResult<Vec<PyEmitter>> {
-        let rt = get_or_init_runtime();
-        let emitters = rt.block_on(self.inner.emitters()).map_err(enody_err)?;
+    fn emitters(&self, py: Python<'_>) -> PyResult<Vec<PyEmitter>> {
+        let inner = self.inner.clone();
+        let emitters = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.emitters())
+        })
+        .map_err(enody_err)?;
         Ok(emitters
             .into_iter()
-            .map(|e| PyEmitter { inner: e })
+            .map(|e| PyEmitter {
+                inner: Arc::new(e),
+                gate: self.gate.clone(),
+            })
             .collect())
     }
 
     fn display(
         &self,
+        py: Python<'_>,
         config: &PyConfiguration,
         flux: &PyFlux,
     ) -> PyResult<(PyConfiguration, PyFlux)> {
-        let rt = get_or_init_runtime();
-        let (cfg, f) = rt
-            .block_on(self.inner.display(config.inner.clone(), flux.inner.clone()))
-            .map_err(enody_err)?;
+        let inner = self.inner.clone();
+        let config = config.inner.clone();
+        let flux = flux.inner.clone();
+        let (cfg, f) = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.display(config, flux))
+        })
+        .map_err(enody_err)?;
         Ok((PyConfiguration { inner: cfg }, PyFlux { inner: f }))
     }
 
-    fn transition(&self, transition: &PyTransition) -> PyResult<(PyConfiguration, PyFlux)> {
-        let rt = get_or_init_runtime();
-        let state = rt
-            .block_on(self.inner.transition(transition.source_transition()))
-            .map_err(enody_err)?;
+    fn transition(
+        &self,
+        py: Python<'_>,
+        transition: &PyTransition,
+    ) -> PyResult<(PyConfiguration, PyFlux)> {
+        let inner = self.inner.clone();
+        let transition = transition.source_transition();
+        let state = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.transition(transition))
+        })
+        .map_err(enody_err)?;
         Ok((
             PyConfiguration {
                 inner: state.configuration,
@@ -778,7 +894,8 @@ impl PySource {
 
 #[pyclass(name = "Emitter")]
 pub struct PyEmitter {
-    inner: enody::emitter::remote::RemoteEmitter,
+    inner: Arc<enody::emitter::remote::RemoteEmitter>,
+    gate: DeviceGate,
 }
 
 #[pymethods]
@@ -787,17 +904,22 @@ impl PyEmitter {
         self.inner.identifier().to_string()
     }
 
-    fn spectral_data(&self) -> PyResult<PySpectralData> {
-        let rt = get_or_init_runtime();
-        let sd = rt.block_on(self.inner.spectral_data()).map_err(enody_err)?;
+    fn spectral_data(&self, py: Python<'_>) -> PyResult<PySpectralData> {
+        let inner = self.inner.clone();
+        let sd = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.spectral_data())
+        })
+        .map_err(enody_err)?;
         Ok(PySpectralData { inner: sd })
     }
 
-    fn set_flux(&self, flux: &PyFlux) -> PyResult<PyFlux> {
-        let rt = get_or_init_runtime();
-        let result = rt
-            .block_on(self.inner.set_flux(flux.inner.clone()))
-            .map_err(enody_err)?;
+    fn set_flux(&self, py: Python<'_>, flux: &PyFlux) -> PyResult<PyFlux> {
+        let inner = self.inner.clone();
+        let flux = flux.inner.clone();
+        let result = run_device(py, &self.gate, move || {
+            get_or_init_runtime().block_on(inner.set_flux(flux))
+        })
+        .map_err(enody_err)?;
         Ok(PyFlux { inner: result })
     }
 }
@@ -940,7 +1062,7 @@ impl PyWifiConnection {
     #[staticmethod]
     fn runtime_from_endpoint(token: &PyToken, endpoint: String) -> PyResult<PyRuntime> {
         enody::wifi::WifiConnection::runtime_from_endpoint(&token.inner, endpoint)
-            .map(|inner| PyRuntime { inner })
+            .map(PyRuntime::from_native)
             .map_err(enody_err)
     }
 
@@ -950,7 +1072,7 @@ impl PyWifiConnection {
         device: &PyWifiDiscoveredDevice,
     ) -> PyResult<PyRuntime> {
         enody::wifi::WifiConnection::runtime_from_discovered_device(&token.inner, &device.inner)
-            .map(|inner| PyRuntime { inner })
+            .map(PyRuntime::from_native)
             .map_err(enody_err)
     }
 
@@ -1033,7 +1155,7 @@ impl PyWifiEnvironment {
         self.inner
             .runtimes()
             .into_iter()
-            .map(|inner| PyRuntime { inner })
+            .map(PyRuntime::from_native)
             .collect()
     }
 
