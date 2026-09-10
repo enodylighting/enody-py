@@ -13,3 +13,12 @@ env_logger = "0.11"
 pyo3 = { version = "0.25", features = ["extension-module"] }
 tokio = { version = "1.44", features = ["full"] }
 uuid = { version = "1.16", features = ["v4", "serde"] }
+
+[dev-dependencies]
+postcard = { version = "1.1", features = ["alloc"] }
+serde = "1.0"
+snow = { version = "0.10", default-features = false, features = ["default-resolver-crypto"] }
+
+[[example]]
+name = "native-test-peer"
+path = "tests/native/peer.rs"
