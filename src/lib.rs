@@ -51,6 +51,69 @@ fn run_device<T: Send>(
     })
 }
 
+// USB backends are thread-affine (not Send/Sync). Keep discovery environments on
+// one native owner thread, including destruction, and release the GIL while
+// waiting for replies. No unsafe Send implementation or Python objects cross it.
+type EnvironmentJob<T> = Box<dyn FnOnce(&mut T) + Send>;
+struct EnvironmentWorker<T> {
+    sender: std::sync::mpsc::Sender<EnvironmentJob<T>>,
+}
+
+impl<T: 'static> EnvironmentWorker<T> {
+    fn new(
+        py: Python<'_>,
+        create: impl FnOnce() -> Result<T, enody::Error> + Send + 'static,
+    ) -> PyResult<Self> {
+        run_native(py, move || {
+            let (sender, receiver) = std::sync::mpsc::channel::<EnvironmentJob<T>>();
+            let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+            std::thread::Builder::new()
+                .name("enody-discovery".into())
+                .spawn(move || {
+                    let _context = get_or_init_runtime().enter();
+                    match create() {
+                        Ok(mut environment) => {
+                            if ready_tx.send(Ok(())).is_ok() {
+                                for job in receiver {
+                                    job(&mut environment);
+                                }
+                            }
+                            // Environment teardown can join threads and disconnect devices.
+                            // It deliberately runs here, never in Python's GC with the GIL.
+                        }
+                        Err(error) => {
+                            let _ = ready_tx.send(Err(error));
+                        }
+                    }
+                })
+                .map_err(|e| enody::Error::Debug(e.to_string()))?;
+            ready_rx
+                .recv()
+                .map_err(|_| enody::Error::Debug("discovery worker stopped".into()))??;
+            Ok(Self { sender })
+        })
+        .map_err(enody_err)
+    }
+
+    fn call<R: Send + 'static>(
+        &self,
+        py: Python<'_>,
+        operation: impl FnOnce(&mut T) -> R + Send + 'static,
+    ) -> PyResult<R> {
+        run_native(py, || {
+            let (tx, rx) = std::sync::mpsc::sync_channel(1);
+            self.sender
+                .send(Box::new(move |environment| {
+                    let _ = tx.send(operation(environment));
+                }))
+                .map_err(|_| enody::Error::Debug("discovery worker stopped".into()))?;
+            rx.recv()
+                .map_err(|_| enody::Error::Debug("discovery worker stopped".into()))
+        })
+        .map_err(enody_err)
+    }
+}
+
 fn enody_err(e: enody::Error) -> PyErr {
     PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!("{:?}", e))
 }
@@ -581,45 +644,48 @@ fn environment_runtime_event(
 
 #[pyclass(name = "UsbEnvironment", unsendable)]
 pub struct PyUsbEnvironment {
-    inner: enody::usb::UsbEnvironment,
+    inner: EnvironmentWorker<enody::usb::UsbEnvironment>,
 }
 
 #[pymethods]
 impl PyUsbEnvironment {
     #[new]
-    fn new() -> PyResult<Self> {
-        let rt = get_or_init_runtime();
-        let env = rt
-            .block_on(async { tokio::task::block_in_place(|| enody::usb::UsbEnvironment::new()) });
-        Ok(Self { inner: env })
+    fn new(py: Python<'_>) -> PyResult<Self> {
+        let inner = EnvironmentWorker::new(py, || Ok(enody::usb::UsbEnvironment::new()))?;
+        Ok(Self { inner })
     }
 
-    fn runtimes(&self) -> Vec<PyRuntime> {
+    fn runtimes(&self, py: Python<'_>) -> PyResult<Vec<PyRuntime>> {
         use enody::environment::Environment;
+        let runtimes = self.inner.call(py, |inner| inner.runtimes())?;
+        Ok(runtimes.into_iter().map(PyRuntime::from_native).collect())
+    }
+
+    fn start_discovery(&mut self, py: Python<'_>) -> PyResult<()> {
+        use enody::environment::DiscoveryEnvironment;
         self.inner
-            .runtimes()
-            .into_iter()
-            .map(PyRuntime::from_native)
-            .collect()
+            .call(py, |inner| {
+                get_or_init_runtime().block_on(inner.start_discovery())
+            })?
+            .map_err(enody_err)
     }
 
-    fn start_discovery(&mut self) -> PyResult<()> {
+    fn stop_discovery(&mut self, py: Python<'_>) -> PyResult<()> {
         use enody::environment::DiscoveryEnvironment;
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.start_discovery()).map_err(enody_err)
+        self.inner
+            .call(py, |inner| {
+                get_or_init_runtime().block_on(inner.stop_discovery())
+            })?
+            .map_err(enody_err)
     }
 
-    fn stop_discovery(&mut self) -> PyResult<()> {
+    fn next_runtime_event(&self, py: Python<'_>) -> PyResult<PyEnvironmentRuntimeEvent> {
         use enody::environment::DiscoveryEnvironment;
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.stop_discovery()).map_err(enody_err)
-    }
-
-    fn next_runtime_event(&self) -> PyResult<PyEnvironmentRuntimeEvent> {
-        use enody::environment::DiscoveryEnvironment;
-        let rt = get_or_init_runtime();
-        let event = rt
-            .block_on(self.inner.next_runtime_event())
+        let event = self
+            .inner
+            .call(py, |inner| {
+                get_or_init_runtime().block_on(inner.next_runtime_event())
+            })?
             .map_err(enody_err)?;
         Ok(environment_runtime_event(event))
     }
@@ -1044,15 +1110,18 @@ where
 impl PyWifiConnection {
     #[staticmethod]
     #[pyo3(signature = (timeout_ms = 800))]
-    fn discover_token_generation_devices(timeout_ms: u64) -> PyResult<Vec<PyWifiDiscoveredDevice>> {
-        let rt = get_or_init_runtime();
-        let devices = rt
-            .block_on(
+    fn discover_token_generation_devices(
+        py: Python<'_>,
+        timeout_ms: u64,
+    ) -> PyResult<Vec<PyWifiDiscoveredDevice>> {
+        let devices = run_native(py, move || {
+            get_or_init_runtime().block_on(
                 enody::wifi::WifiConnection::discover_token_generation_devices(
                     Duration::from_millis(timeout_ms),
                 ),
             )
-            .map_err(enody_err)?;
+        })
+        .map_err(enody_err)?;
         Ok(devices
             .into_iter()
             .map(|inner| PyWifiDiscoveredDevice { inner })
@@ -1118,13 +1187,14 @@ impl PyWifiConnection {
 
 #[pyclass(name = "WifiEnvironment", unsendable)]
 pub struct PyWifiEnvironment {
-    inner: enody::wifi::WifiEnvironment,
+    inner: EnvironmentWorker<enody::wifi::WifiEnvironment>,
 }
 
 #[pymethods]
 impl PyWifiEnvironment {
     #[new]
     fn new(
+        py: Python<'_>,
         tokens: Vec<PyRef<'_, PyToken>>,
         timeout_ms: u64,
         excluded_host_ids: Vec<String>,
@@ -1137,59 +1207,64 @@ impl PyWifiEnvironment {
             .iter()
             .map(|host_id| parse_identifier(host_id))
             .collect::<PyResult<Vec<_>>>()?;
-        let rt = get_or_init_runtime();
-        let inner = rt
-            .block_on(
+        let inner = EnvironmentWorker::new(py, move || {
+            get_or_init_runtime().block_on(
                 enody::wifi::WifiEnvironment::with_timeout_and_excluded_host_ids(
                     tokens,
                     Duration::from_millis(timeout_ms),
                     excluded_host_ids,
                 ),
             )
-            .map_err(enody_err)?;
+        })?;
         Ok(Self { inner })
     }
 
-    fn runtimes(&self) -> Vec<PyRuntime> {
+    fn runtimes(&self, py: Python<'_>) -> PyResult<Vec<PyRuntime>> {
         use enody::environment::Environment;
+        let runtimes = self.inner.call(py, |inner| inner.runtimes())?;
+        Ok(runtimes.into_iter().map(PyRuntime::from_native).collect())
+    }
+
+    fn start_discovery(&mut self, py: Python<'_>) -> PyResult<()> {
+        use enody::environment::DiscoveryEnvironment;
         self.inner
-            .runtimes()
-            .into_iter()
-            .map(PyRuntime::from_native)
-            .collect()
+            .call(py, |inner| {
+                get_or_init_runtime().block_on(inner.start_discovery())
+            })?
+            .map_err(enody_err)
     }
 
-    fn start_discovery(&mut self) -> PyResult<()> {
+    fn stop_discovery(&mut self, py: Python<'_>) -> PyResult<()> {
         use enody::environment::DiscoveryEnvironment;
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.start_discovery()).map_err(enody_err)
+        self.inner
+            .call(py, |inner| {
+                get_or_init_runtime().block_on(inner.stop_discovery())
+            })?
+            .map_err(enody_err)
     }
 
-    fn stop_discovery(&mut self) -> PyResult<()> {
+    fn next_runtime_event(&self, py: Python<'_>) -> PyResult<PyEnvironmentRuntimeEvent> {
         use enody::environment::DiscoveryEnvironment;
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.stop_discovery()).map_err(enody_err)
-    }
-
-    fn next_runtime_event(&self) -> PyResult<PyEnvironmentRuntimeEvent> {
-        use enody::environment::DiscoveryEnvironment;
-        let rt = get_or_init_runtime();
-        let event = rt
-            .block_on(self.inner.next_runtime_event())
+        let event = self
+            .inner
+            .call(py, |inner| {
+                get_or_init_runtime().block_on(inner.next_runtime_event())
+            })?
             .map_err(enody_err)?;
         Ok(environment_runtime_event(event))
     }
 
-    fn exclude_host_id(&self, host_id: String) -> PyResult<()> {
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.exclude_host_id(parse_identifier(&host_id)?));
-        Ok(())
+    fn exclude_host_id(&self, py: Python<'_>, host_id: String) -> PyResult<()> {
+        let host_id = parse_identifier(&host_id)?;
+        self.inner.call(py, move |inner| {
+            get_or_init_runtime().block_on(inner.exclude_host_id(host_id))
+        })
     }
 
-    fn remove_excluded_host_id(&self, host_id: String) -> PyResult<()> {
+    fn remove_excluded_host_id(&self, py: Python<'_>, host_id: String) -> PyResult<()> {
+        let host_id = parse_identifier(&host_id)?;
         self.inner
-            .remove_excluded_host_id(parse_identifier(&host_id)?);
-        Ok(())
+            .call(py, move |inner| inner.remove_excluded_host_id(host_id))
     }
 }
 
