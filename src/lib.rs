@@ -472,6 +472,16 @@ impl PyToken {
 // TokenStore
 // ---------------------------------------------------------------------------
 
+// The GIL previously serialized token-file reads/writes. Preserve that ordering
+// with a native lock so load/upsert/save cannot lose concurrent updates.
+fn run_token_io<T: Send>(py: Python<'_>, operation: impl FnOnce() -> T + Send) -> T {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    run_native(py, move || {
+        let _guard = LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        operation()
+    })
+}
+
 #[pyclass(name = "TokenStore")]
 #[derive(Clone)]
 pub struct PyTokenStore {
@@ -488,17 +498,19 @@ impl PyTokenStore {
     }
 
     #[staticmethod]
-    fn load() -> PyResult<Self> {
-        enody::token_store::TokenStore::load()
+    fn load(py: Python<'_>) -> PyResult<Self> {
+        run_token_io(py, enody::token_store::TokenStore::load)
             .map(|inner| Self { inner })
             .map_err(enody_err)
     }
 
     #[staticmethod]
-    fn load_from_path(path: String) -> PyResult<Self> {
-        enody::token_store::TokenStore::load_from_path(path)
-            .map(|inner| Self { inner })
-            .map_err(enody_err)
+    fn load_from_path(py: Python<'_>, path: String) -> PyResult<Self> {
+        run_token_io(py, move || {
+            enody::token_store::TokenStore::load_from_path(path)
+        })
+        .map(|inner| Self { inner })
+        .map_err(enody_err)
     }
 
     #[staticmethod]
@@ -516,10 +528,13 @@ impl PyTokenStore {
     }
 
     #[staticmethod]
-    fn save_token(token: &PyToken) -> PyResult<String> {
-        enody::token_store::TokenStore::save_token(&token.inner)
-            .map(|path| path.display().to_string())
-            .map_err(enody_err)
+    fn save_token(py: Python<'_>, token: &PyToken) -> PyResult<String> {
+        run_token_io(py, {
+            let token = token.inner.clone();
+            move || enody::token_store::TokenStore::save_token(&token)
+        })
+        .map(|path| path.display().to_string())
+        .map_err(enody_err)
     }
 
     fn tokens(&self) -> Vec<PyToken> {
@@ -535,15 +550,21 @@ impl PyTokenStore {
         self.inner.upsert(token.inner.clone());
     }
 
-    fn save(&self) -> PyResult<String> {
-        self.inner
-            .save()
-            .map(|path| path.display().to_string())
-            .map_err(enody_err)
+    fn save(&self, py: Python<'_>) -> PyResult<String> {
+        run_token_io(py, {
+            let inner = self.inner.clone();
+            move || inner.save()
+        })
+        .map(|path| path.display().to_string())
+        .map_err(enody_err)
     }
 
-    fn save_to_path(&self, path: String) -> PyResult<()> {
-        self.inner.save_to_path(path).map_err(enody_err)
+    fn save_to_path(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        run_token_io(py, {
+            let inner = self.inner.clone();
+            move || inner.save_to_path(path)
+        })
+        .map_err(enody_err)
     }
 }
 
@@ -1083,7 +1104,7 @@ fn run_with_approval_callback<F>(
 where
     F: FnOnce(&mut dyn FnMut(&str)) -> Result<enody::message::Token, enody::Error> + Send,
 {
-    py.allow_threads(move || {
+    let (result, callback_error) = run_native(py, move || {
         let mut callback_error: Option<PyErr> = None;
         let mut on_approval = |instruction: &str| {
             if callback_error.is_some() {
@@ -1099,11 +1120,12 @@ where
         };
 
         let result = operation(&mut on_approval);
-        if let Some(error) = callback_error {
-            return Err(error);
-        }
-        result.map(|inner| PyToken { inner }).map_err(enody_err)
-    })
+        (result, callback_error)
+    });
+    if let Some(error) = callback_error {
+        return Err(error);
+    }
+    result.map(|inner| PyToken { inner }).map_err(enody_err)
 }
 
 #[pymethods]
@@ -1152,9 +1174,8 @@ impl PyWifiConnection {
         endpoint: String,
         on_approval: Option<Py<PyAny>>,
     ) -> PyResult<PyToken> {
-        let rt = get_or_init_runtime();
         run_with_approval_callback(py, on_approval, move |callback| {
-            rt.block_on(
+            get_or_init_runtime().block_on(
                 enody::wifi::WifiConnection::generate_token_from_endpoint_with_approval(
                     endpoint, callback,
                 ),
@@ -1169,10 +1190,9 @@ impl PyWifiConnection {
         device: &PyWifiDiscoveredDevice,
         on_approval: Option<Py<PyAny>>,
     ) -> PyResult<PyToken> {
-        let rt = get_or_init_runtime();
         let device = device.inner.clone();
         run_with_approval_callback(py, on_approval, move |callback| {
-            rt.block_on(
+            get_or_init_runtime().block_on(
                 enody::wifi::WifiConnection::generate_token_from_discovered_device_with_approval(
                     &device, callback,
                 ),
@@ -1280,9 +1300,10 @@ pub struct PyUpdateTarget {
 #[pymethods]
 impl PyUpdateTarget {
     #[staticmethod]
-    fn discover() -> PyResult<Vec<PyUpdateTarget>> {
-        let rt = get_or_init_runtime();
-        let targets = rt.block_on(enody::update::EP01UpdateTarget::attached());
+    fn discover(py: Python<'_>) -> PyResult<Vec<PyUpdateTarget>> {
+        let targets = run_native(py, || {
+            get_or_init_runtime().block_on(enody::update::EP01UpdateTarget::attached())
+        });
         Ok(targets
             .into_iter()
             .map(|t| PyUpdateTarget { inner: t })
@@ -1301,30 +1322,37 @@ impl PyUpdateTarget {
         self.inner.mac_address().map(|s| s.to_string())
     }
 
-    fn available_firmware(&self) -> PyResult<Vec<String>> {
-        let rt = get_or_init_runtime();
-        let versions = rt
-            .block_on(self.inner.available_firmware())
-            .map_err(enody_err)?;
+    fn available_firmware(&self, py: Python<'_>) -> PyResult<Vec<String>> {
+        let inner = self.inner.clone();
+        let versions = run_native(py, move || {
+            get_or_init_runtime().block_on(inner.available_firmware())
+        })
+        .map_err(enody_err)?;
         Ok(versions.iter().map(|fv| fv.version().to_string()).collect())
     }
 
-    fn update_available(&self) -> PyResult<bool> {
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.update_available())
-            .map_err(enody_err)
+    fn update_available(&self, py: Python<'_>) -> PyResult<bool> {
+        let inner = self.inner.clone();
+        run_native(py, move || {
+            get_or_init_runtime().block_on(inner.update_available())
+        })
+        .map_err(enody_err)
     }
 
-    fn update_device(&self, version: String) -> PyResult<()> {
-        let rt = get_or_init_runtime();
-        rt.block_on(self.inner.update_device(&version))
-            .map_err(enody_err)
+    fn update_device(&self, py: Python<'_>, version: String) -> PyResult<()> {
+        let inner = self.inner.clone();
+        run_native(py, move || {
+            get_or_init_runtime().block_on(inner.update_device(&version))
+        })
+        .map_err(enody_err)
     }
 
-    fn flash_firmware_image(&self, firmware_path: String) -> PyResult<()> {
-        self.inner
-            .flash_firmware_image(std::path::Path::new(&firmware_path))
-            .map_err(enody_err)
+    fn flash_firmware_image(&self, py: Python<'_>, firmware_path: String) -> PyResult<()> {
+        run_native(py, {
+            let inner = self.inner.clone();
+            move || inner.flash_firmware_image(std::path::Path::new(&firmware_path))
+        })
+        .map_err(enody_err)
     }
 }
 
